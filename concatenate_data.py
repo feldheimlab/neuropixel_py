@@ -4,21 +4,47 @@ Python script to take concatenate .bin data for spike sorting through kilosort
 
 Authors: Brian R. Mullen
 Date: 2024-09-09
-'''
 
+ 
+Examples:
+
+1. Concatenate all subfolders found in the data directory
+python concatenate_data.py -i D:/Main/Data/File 
+
+2. Concatenate only the datasets indicated that are found in the data directory
+python concatenate_data.py -i D:/Main/Data/File -d 0 2 3 
+
+Saves concatenated data, ttl times, and data separation information
+'''
 
 import os 
 import sys
 import shutil
 
 import numpy as np
-import matplotlib.pyplot as plt
 
+#change the location of this repository if needed
 sys.path.append('../auditoryAnalysis/python/')
 from preprocessing import ttl_rise
 
 
-def concatentate_npx_data(dataset_dir, datasets):
+def concatentate_npx_data(dataset_dir: str, 
+                          datasets: list):
+    '''
+    Conatenates data based on neuropixel recording
+
+    Arguments:
+        dataset_dir: Main directory that holds the subsets of data
+        datasets: list of data subsets to be included in the concatentated data
+
+    Returns:
+        folders_org: all subfolders in the main dataset to include in concatenation
+        savefile: save path of concatentated data
+
+    Saves:
+        concatenated data in binary format, similar to how it was initially recorded 
+    '''
+
     print('Concatenating data ', dataset_dir)
     folders = os.listdir(dataset_dir)[:2]
 
@@ -60,7 +86,8 @@ def concatentate_npx_data(dataset_dir, datasets):
 
     #create bin save file
     fsave = open(savefile, 'wb')
-    open each individiual datafile to copy to the concatnetated bin file
+
+    #open each individiual datafile to copy to the concatnetated bin file
     for datafile in folders_org: 
         fo=open(os.path.join(dataset_dir, datafile), 'rb')
         shutil.copyfileobj(fo, fsave)
@@ -70,7 +97,26 @@ def concatentate_npx_data(dataset_dir, datasets):
 
     return folders_org, savefile
 
-def ttl_npx_data(dataset_dir, savefile, folders_org, fps=30000):
+def ttl_npx_data(dataset_dir: str, 
+                 savefile: str, 
+                 folders_org: list, 
+                 fps: int = 30000):
+    '''
+    Uses memory maps to load only the digital data (last channel)
+    
+    Arguments:
+        dataset_dir: Main directory that holds the subsets of data
+        savefile: save path of concatentated data, used to get the save directory
+        folders_org: all subfolders in the main dataset to include in concatenation
+    
+    Returns:
+        None
+
+    Saves two files:
+        ttl times: numpy file saving all times TTLs occured, relative the concatenetated data 
+        Datasep: Dictionary containing data separation times and dataset lengths
+    '''
+
     savedir = os.path.dirname(savefile)
 
     print('\nCalculating TTLs and data separation.\n')
@@ -123,13 +169,14 @@ def ttl_npx_data(dataset_dir, savefile, folders_org, fps=30000):
     #     if (ttl - ttls[t-1])<10:
     #         ttls.remove(ttl)
 
-    print('Datasep:', datasep)
+    print('\nDatasep:', datasep)
     print('Datalength:', datalength)
     print('Total TTLs found:', len(ttls))
 
     print('Saving TTL and Data Seperation data: ', savedir)
     np.save(os.path.join(savedir, 'TTLs.npy'), ttls)
     np.save(os.path.join(savedir, 'datasep.npy'), {'Datasep':datasep, 'Datalength':datalength})
+
 
 if __name__ == '__main__':
 
