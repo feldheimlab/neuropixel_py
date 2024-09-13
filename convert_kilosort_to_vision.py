@@ -123,6 +123,7 @@ if __name__ == '__main__':
     args = vars(ap.parse_args())
 
     kilosortloc = args['input_directory']
+    savedir = os.path.dirname(kilosortloc) + '/vision/'
 
     #spikes
     spiketemplates = np.load(os.path.join(kilosortloc, 'spike_clusters.npy')) # to make asdf
