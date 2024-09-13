@@ -2,6 +2,19 @@
 '''
 Python script to take kilosort data and convert it to vision-like outputs
 
+This script is used to convert data run through kilosort to a format that is accepted by
+Feldheim lab pipeline (vision is the spikesorter that has been commonly used in the lab.)
+
+ttlTimes.npy and datasep.npy can be in the kilosort folder or the parent directory
+to the kilosort folder
+
+Examples:
+
+1. Concatenate all subfolders found in the data directory
+python convert_kilosort_to_vision.py -i D:/Main/Data/File/kilosort4 
+
+Saves matlab files in a sister folder called 'vision' to the kilosort folder
+
 Authors: Brian R. Mullen
 Date: 2024-09-09
 
@@ -10,38 +23,92 @@ import os
 import sys
 
 import numpy as np
+import pandas as pd
+
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from scipy.io import savemat
 
-def ttl_rise_d(digital_data, rate=rate):
-    digital_data = np.squeeze(digital_data)
-    dif = digital_data[:-1]-digital_data[1:]
-    rise = np.where(dif<-0.5)[0]
-    rise_d = []
-    for r, ris in enumerate(rise):
-        if r == 0:
-            rise_d.append(ris)
-        elif (ris) >= (rise_d[-1]+(.0095*rate)):
-            rise_d.append(ris)
-            
-    return np.array(rise_d)/rate*1000
+sys.path.append('../auditoryAnalysis/python/')
+from preprocessing import probeMap
 
+def get_IDs(cluster: pd.DataFrame, 
+            class_col: str, 
+            matlab_version:str, 
+            group: str = 'good'):
+    '''
+    Gets the cluster of IDs of the classification indicated
+    
+    Arguments:
+        cluster: pd.DataFrame the indicates classification of clusters (usually saved from phy)
+        class_col: column in the pd.DataFrame that the classifcation is in
+        matlab_version: matlab version for saving using scipy.io
+        group: which classification used, could be 'good', 'mua', 'noise'
 
-def get_IDs(cluster, group='good'):
-    IDs = cluster[cluster['group']==group].index
+    Returns:
+        IDs: cluster ids from sorting to be included in the saved output
+
+    '''
+    IDs = cluster.loc[cluster[class_col]==group, 'cluster_id'].values
+
     return np.array(IDs, dtype=int)
 
-def ttlTimes_creation(wd, dig, rate=rate):
+def ttlTimes_creation(savedir:str, 
+                      ttls:np.array, 
+                      matlab_version:str, 
+                      rate:int):
+    '''
+    Gets the cluster of IDs of the classification indicated
+    
+    Arguments:
+        savedir: save directory where the below files are saved
+        ttls: array of times when the TTL was recorded
+        matlab_version: matlab version for saving using scipy.io
+        rate: recording rate (FPS)
+
+    Returns:
+        None
+
+    Saves:
+        ttlTimes.mat: ttltimes matlab formatted
+    '''
+
     print('Making ttlTimes.mat file')
-    ttlTimes = ttl_rise_d(dig, rate=rate)
-    savedict = {'ttlTimes':ttlTimes}
+    savedict = {'ttlTimes':ttls}
+    print('\tSaving ttlTimes.mat to: ', savedir)
+    savemat(os.path.join(savedir, 'ttlTimes.mat'), savedict, format=matlab_version)
 
-    print('\tSaving ttlTimes.mat to: ', wd)
-    savemat(os.path.join(wd, 'ttlTimes.mat'), savedict, format='7.2')
+#### NEEDS WORK STILL####
+def eisummary_creation(savedir:str,
+                       templates:np.array, 
+                       IDs:list, 
+                       cluster:pd.DataFrame, 
+                       rate:int):
+        '''
+    Saves cluster waveform, with corresponding atributes
+    
+    Arguments:
+        savedir: save directory where the below files are saved
+        templates: waveforms used in the clustering
+        IDs: list of identified clusters (returned by get_IDs)
+        cluster: pd.DataFrame containing cluster information
+        rate: recording rate (FPS)
 
-def eisummary_creation(wd, spiketemplates, IDs, cluster, rate=rate):
+    Returns:
+        None
+
+    Saves:
+        eisummary.mat: strucutured file, formated for matlab
+            contains: 
+                waveform: 2-d array of the average waveform of the clustered events x neuronal IDs
+                eitime: 1-d time series for one of the waveforms in ms
+                maxChannels: which was the max channel? 
+                maxAmplitudes: relative amplitude of the waveform?
+    '''
     print('Creating eisummary.mat file.')
     waveform = spiketemplates[IDs]
+    print(waveform.shape)
     center = np.nanargmin(waveform, axis=1)
     eitime = np.arange(-center, waveform.shape[0])/(rate/1000)
     maxChannels  = cluster.loc[IDs, 'ch'].values
@@ -50,63 +117,160 @@ def eisummary_creation(wd, spiketemplates, IDs, cluster, rate=rate):
                 'eitime':eitime, 
                 'maxChannels':maxChannels, 
                 'maxAmplitudes':maxAmplitudes}
+    print('\tSaving xy.mat to: ', savedir)
+    savemat(os.path.join(savedir, 'eisummary.mat'), savedict, format=matlab_version)
 
-    print('\tSaving xy.mat to: ', wd)
-    savemat(os.path.join(wd, 'xy.mat'), savedict, format='7.2')
+def segmentlengths_creation(savedir: str, 
+                            datasep: np.array):
+    '''
+    Saves the information about subsets (individual experiments) of concatenated data
+    
+    Arguments:
+        savedir: save directory where the below files are saved
+        datasep: information from when the data was concatenated acorss multiple subsets
 
-def segmentlengths_creation(datasep):
+    Returns:
+        None
+
+    Saves:
+        segmentlengths.mat: strucutured file, formated for matlab
+            contains: 
+                data segment lengths: the length of each subset of recording
+                data segment separations: the times at which they transition to a new subset
+                timestamp: ?
+    '''
     print('Creating segmentlengths.mat file')
-    timestamps = 
-    segmentlengths = np.diff(datasep)
-    segmentseparations = datasep[1:]
+    timestamps = '240807'
+
+    try:
+        segmentlengths = np.array(datasep.item().get('Datalength'))
+        segmentseparations = np.array(datasep.item().get('Datasep'))
+    except:
+        segmentseparations = datasep
+        segmentlengths = np.diff(datasep)
+
     savedict = {'timestamps':timestamps, 
                 'segmentlengths':segmentlengths, 
                 'segmentseparations':segmentseparations}
 
-    print('\tSaving segmentlengths.mat to: ', wd)
-    savemat(os.path.join(wd, 'segmentlengths.mat'), savedict, format='7.2')
+    print('\tSaving segmentlengths.mat to: ', savedir)
+    savemat(os.path.join(savedir, 'segmentlengths.mat'), savedict, format=matlab_version)
 
-def xy_creation():
+def xy_creation(savedir:str, 
+                IDs:list, 
+                cluster:pd.DataFrame):
+    '''
+    Saves the information about subsets (individual experiments) of concatenated data
+    
+    Arguments:
+        savedir: save directory where the below files are saved
+        IDs: list of identified clusters (returned by get_IDs)
+        cluster: pd.DataFrame containing cluster information
+
+    Returns:
+        xy dictionary
+
+    Saves:
+        xy.mat: strucutured file, formated for matlab
+            contains: 
+                x: channel x positions that recorded the highest activity
+                y: channel y positions that recorded the highest activity
+                xs: neuronal x positions
+                ys: neuronal y positions
+                ang: potential insertion angle?
+    '''
+
     print('Making xy.mat file')
-    x = chanposition[:,0]
-    y = chanposition[:,1]
-    xs = chanposition[:,0]
-    ys  = chanposition[:,1]
-    ang = np.zeros_like(chanposition[:,0])
-    savedict = {'x':x, 
-                'y':y, 
-                'xs':xs, 
-                'ys':ys, 
+    
+    chlocation = np.zeros((IDs.shape[0],2))
+    location = np.zeros((IDs.shape[0],2))
+    for i, ID in enumerate(IDs):
+        chlocation[i] = cluster.loc[cluster['cluster_id'] == ID, ['x', 'y']].values
+        location[i] =  cluster.loc[cluster['cluster_id'] == ID, ['xs', 'ys']].values
+
+    ang = np.zeros(IDs.shape[0])
+    savedict = {'x':chlocation[:,0], 
+                'y':chlocation[:,1], 
+                'xs':location[:,0], 
+                'ys':location[:,1], 
                 'ang':ang}
 
-    print('\tSaving xy.mat to: ', wd)
-    savemat(os.path.join(wd, 'xy.mat'), savedict, format='7.2')
+    print('\tSaving xy.mat to: ', savedir)
+    savemat(os.path.join(savedir, 'xy.mat'), savedict, format=matlab_version)
 
-def basicinfo_creation(recordingregion='SC'):
+    return savedict
+
+def basicinfo_creation(savedir:str, 
+                       recordingregion:str='SC'):
+    '''
+    Saves the information about subsets (individual experiments) of concatenated data
+    
+    Arguments:
+        savedir: save directory where the below files are saved
+        recordingregion: region of electrophys recording
+
+    Returns:
+        None
+
+    Saves:
+        basicinfo.mat: metadata of recording
+            contains: 
+                recordingregion: location of recording
+    '''
     print('Making basicinfo.mat file')
     savedict = {'recordingregion':recordingregion}
-    print('\tSaving basicinfo.mat to: ', wd)
-    savemat(os.path.join(wd, 'basicinfo.mat'), savedict, format='7.2')
+    print('\tSaving basicinfo.mat to: ', savedir)
+    savemat(os.path.join(savedir, 'basicinfo.mat'), savedict, format=matlab_version)
 
-def asdf_creation(IDs, spiketimes, spiketemplates):
-    print('Making asdf.mat file')
-    asdf = np.empty(IDs.shape, dtype=object)
+def asdf_creation(savedir:str, 
+                  IDs:list, 
+                  spiketimes:list, 
+                  spiketemplates:list, 
+                  xy:dict):
+    '''
+    Saves the information about subsets (individual experiments) of concatenated data
     
+    Arguments:
+        savedir: save directory where the below files are saved
+        IDs: list of identified clusters (returned by get_IDs)
+        spiketimes: list of all spikes detected, given in frame of recording
+        spiketemplates: corresponding list of all spikes detected, but defines the cluster assignment
+        xy: dictionary from xy_creation
+
+    Returns:
+        None
+
+    Saves:
+        asdf.mat: metadata of recording for manipulation
+        asdf_orig.mat: backup of the exact same mat file
+            contains: 
+                IDs: location of recording
+                location: x, y coordinates of highest activity channels
+                asdf_raw: structured array where each index corresponds to the spike times of the neurons on the IDs list
+    '''
+    print('Making asdf.mat file')
+    asdf = np.empty((IDs.shape[0]+2,1), dtype=object)
+
+    location = np.zeros((IDs.shape[0],2))
+    # print(cluster.head())
+    location[:,0]=xy['y']            
+    location[:,1]=xy['xs']
+
+    totalspikes = 0
     for n, neuron in enumerate(IDs):
         try:
-            asdf[n]=np.array(np.squeeze(spiketimes[spiketemplates==neuron]))
-
-    IDs
-    asdf_raw
-    location
-
-
-def convert_kilosort_to_vision(dig, cluster, rate=rate, group='good'):
-    ttlTimes_creation(dig, rate=rate)
-    IDs = get_IDs(cluster, group=group)
-
-
-rate = 20000
+            asdf[n,0]=np.array(np.squeeze(spiketimes[spiketemplates==neuron]))*1000/rate
+            totalspikes += asdf[n,0].shape[0]
+        except:
+            asdf[n,0]=np.ones(1)*np.nan
+    asdf[-2,0] = 1
+    asdf[-1,0] = [IDs.shape[0], totalspikes]
+    savedict = {'IDs':np.array(IDs).reshape(-1,1), 
+                'location':location, 
+                'asdf_raw': asdf}
+    print('\tSaving asdf.mat to: ', savedir)
+    savemat(os.path.join(savedir, 'asdf.mat'), savedict, format=matlab_version)
+    savemat(os.path.join(savedir, 'asdf_orig.mat'), savedict, format=matlab_version)
 
 if __name__ == '__main__':
 
@@ -120,22 +284,155 @@ if __name__ == '__main__':
     ap.add_argument('-i', '--input_directory', type = str,
         required = True, 
         help = 'path to the kilosort4 files for concatenation')
+    ap.add_argument('-p', '--probe', type = str,
+        default='npxl', 
+        help = 'generates the correct probemap, this can be "A", "AN", or "npxl"')
+    ap.add_argument('-f', '--fps', type = int,
+        default=30000,  
+        help = 'frames per second for data collection')
+    ap.add_argument('-s', '--save', type = bool,
+        default=True, 
+        help = 'saves output graphs and initial assessements of the data')
+    ap.add_argument('-g', '--group_tsv', type = str,
+        default='cluster_info.tsv',  
+        help = 'tsv with specified aves output graphs and initial assessements of the data')
+    ap.add_argument('-c', '--class_col', type = str,
+        default='KSLabel', 
+        help = 'column name of group tsv that indicates that classification of neuronal dataset')
     args = vars(ap.parse_args())
 
+    #necessary paths
     kilosortloc = args['input_directory']
+    assert os.path.exists(kilosortloc), 'Could not find: {}'.format(kilosortloc)
+    parentdir = os.path.dirname(kilosortloc)
+    savedir = os.path.join(parentdir, 'vision')
+    
+    if not os.path.exists(savedir):
+        os.mkdir(savedir)
+    print('Vision dataset will be saved: ', savedir)
 
-    #spikes
+    probe = args['probe']
+    rate = args['fps']
+    clusterdef = args['group_tsv']
+    class_col = args['class_col']
+    save = args['save']
+    matlab_version = '5'
+
+    if save:
+        print('\tGraphs, txt, and data files will be saved in the same location.')
+        with open(os.path.join(savedir,'processed.txt'), 'w') as f:
+            print('Processing kilosort file: ', kilosortloc, file=f)
+            print('Probe used: ', probe, file=f)
+            print('Rate used (FPS): ', rate, file=f)
+            print('Cluster classification defined by {0} in {1} '.format(class_col, clusterdef), file=f)
+    else:
+        print('\tOnly data files will be saved.')
+
+    #load kilosort data
+    #spikes information
+    cluster = pd.read_csv(os.path.join(kilosortloc, clusterdef), sep='\t') #class 
+    #spike cluster in order of event
     spiketemplates = np.load(os.path.join(kilosortloc, 'spike_clusters.npy')) # to make asdf
+    #event times
     spiketimes = np.load(os.path.join(kilosortloc, 'spike_times.npy')) # to make asdf
+    #waveforms for original clusters
     templates = np.load(os.path.join(kilosortloc, 'templates.npy')) #waveforms
+    spikepositions = np.squeeze(np.load(os.path.join(kilosortloc, 'spike_positions.npy'), allow_pickle=True))
 
-    cluster = pd.read_csv(os.path.join(kilosortloc, 'cluster_info.tsv'), sep='\t') #class 
+    #get session/data separations times
+    try:
+        datasep = np.squeeze(np.load(os.path.join(kilosortloc, 'datasep.npy'), allow_pickle=True)) 
+        rised = np.load(os.path.join(kilosortloc, 'ttlTimes.npy'))
+    except:
+        datasep = np.squeeze(np.load(os.path.join(parentdir, 'datasep.npy'), allow_pickle=True)) 
+        rised = np.load(os.path.join(parentdir, 'ttlTimes.npy'))
 
-    #created from rhd files Save the ttl times in a file so we don't have to determine this every time
-    digital = np.load(os.path.join(kilosortloc, 'digital.npy')) #get ttls
-    datasep = np.squeeze(np.load(os.path.join(kilosortloc, 'datasep.npy')))/rate*1000 #get data separations 
-    print(cluster.head())
+    assert 'rised' in globals(), 'Could not find ttlTimes'
+    assert 'datasep' in globals(), 'Could not find Datasep'
 
     #load channel maps
-    chanmap = np.load(os.path.join(kilosortloc,'channel_map.npy')) #map of the probe
-    chanposition = np.load(os.path.join(kilosortloc,'channel_positions.npy'))
+    chanposition = probeMap(probe=probe)
+
+    #create asdf strucured array, each index is a new neuron
+    neuron_clust = np.unique(spiketemplates)#determine unique clusters from the spiketemplates 
+
+    if save:
+        with open(os.path.join(savedir,'processed.txt'), 'a') as f:
+            neurons = cluster[cluster[class_col]=='good']
+            neurons = pd.concat([neurons, cluster[cluster[class_col]=='mua']])
+
+            groups = ['good', 'mua', 'noise']
+            print('\nProcessing kilosort file: ', kilosortloc, file=f)
+            for group in groups:
+                frac = len(cluster[cluster[class_col]==group])/len(cluster)
+                print('{0} fraction {1}/{2}: {3}%'.format(group, len(cluster[cluster[class_col]==group]),
+                                                          len(cluster), np.round(frac*100, 2)), file=f)
+        
+            for group in groups:
+                frac = len(neurons[neurons[class_col]==group])/len(neurons)
+                # if group == 'good':
+                #     frac2 = len(aud_resp)/len(neurons[neurons[class_col]==group])
+                #     print('good and auditory responsive fraction {0}/{1}: {2}%'.format(len(aud_resp), len(neurons[neurons[class_col]==group]), 
+                #                                           np.round(frac2*100, 2)))  
+                print('\t\t{0} fraction {1}/{2}: {3}%'.format(group, len(neurons[neurons[class_col]==group]), 
+                                                         len(neurons), np.round(frac*100, 2)))
+    #visualize where the clusters are located across the probe
+    if probe == 'npxl':
+        ylim = [-50,775]
+    else:
+        ylim = [-50,1150]
+
+    cluster['group_c'] = cluster[class_col]
+    for i, group in enumerate(groups):
+        cluster.loc[cluster[cluster[class_col]==group].index, 'group_c'] = int(i)
+
+    for c_id in cluster['cluster_id']:        
+        points = spikepositions[spiketemplates==c_id]
+        cluster.loc[cluster['cluster_id']==c_id, 'xs']=np.mean(points[:,0])
+        cluster.loc[cluster['cluster_id']==c_id, 'ys']=np.mean(points[:,1])
+        pos = np.squeeze(chanposition[cluster.loc[cluster['cluster_id'] == c_id, 'ch'].values,:])
+        cluster.loc[cluster['cluster_id']==c_id, 'x']=pos[1]
+        cluster.loc[cluster['cluster_id']==c_id, 'y']=pos[0]
+
+    if save:
+        fig, axs = plt.subplots(1,4, figsize = (10,5), sharey=True)
+
+        for j, group in enumerate(groups):
+            chanposition = probeMap(probe=probe)
+            axs[j].scatter(chanposition[:,1], chanposition[:,0], facecolors='None', edgecolors='k')
+            clust = cluster[cluster[class_col]==group].copy()
+            for index in clust.index:        
+                pos = chanposition[clust.loc[index, 'ch']]
+                pos[1] = clust.loc[index, 'xs']
+                pos[0] = clust.loc[index, 'ys']
+                color=clust.loc[index, 'group_c']
+                axs[j].scatter(pos[1], pos[0], c=color, alpha=0.25, vmin=0, vmax=2)
+                axs[j].set_ylim(ylim)
+                
+        axs[0].set_ylabel('depth (um)')
+        axs[1].set_xlabel('span (um)')
+        axs[3].set_xlabel('FR')
+
+        im1 = axs[3].scatter(cluster['fr'], cluster['depth']%750,  c=cluster['group_c'], alpha=0.25, vmin=0, vmax=2)
+        axs[3].set_ylim(ylim)
+        divider = make_axes_locatable(axs[3])
+
+        cax = divider.append_axes('right', size='5%', pad=0.05)
+        cbar = fig.colorbar(im1, cax =cax , orientation='vertical')
+        cbar.set_ticks([0,1,2])
+        cbar.set_ticklabels(groups)
+        plt.savefig(os.path.join(savedir, 'cluster_loc_group_based.png'), dpi=300)
+        # plt.show()
+
+    IDs = get_IDs(cluster, class_col, matlab_version=matlab_version, group='good')
+    ttlTimes_creation(savedir, ttls=rised, matlab_version=matlab_version, rate=rate)
+    
+    xy =xy_creation(savedir, IDs, cluster)
+
+    # eisummary_creation(savedir, spiketemplates, IDs, cluster, rate=rate)
+
+    segmentlengths_creation(savedir, datasep)
+    
+    basicinfo_creation(savedir, recordingregion='SC')
+
+    asdf_creation(savedir, IDs, spiketimes, spiketemplates, xy)

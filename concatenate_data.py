@@ -174,7 +174,7 @@ def ttl_npx_data(dataset_dir: str,
     print('Total TTLs found:', len(ttls))
 
     print('Saving TTL and Data Seperation data: ', savedir)
-    np.save(os.path.join(savedir, 'TTLs.npy'), ttls)
+    np.save(os.path.join(savedir, 'ttlTimes.npy'), ttls)
     np.save(os.path.join(savedir, 'datasep.npy'), {'Datasep':datasep, 'Datalength':datalength})
 
 
