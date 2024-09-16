@@ -33,6 +33,7 @@ from scipy.io import savemat
 sys.path.append('../auditoryAnalysis/python/')
 from preprocessing import probeMap
 
+
 def get_IDs(cluster: pd.DataFrame, 
             class_col: str, 
             matlab_version:str, 
@@ -53,6 +54,7 @@ def get_IDs(cluster: pd.DataFrame,
     IDs = cluster.loc[cluster[class_col]==group, 'cluster_id'].values
 
     return np.array(IDs, dtype=int)
+
 
 def ttlTimes_creation(savedir:str, 
                       ttls:np.array, 
@@ -79,7 +81,7 @@ def ttlTimes_creation(savedir:str,
     print('\tSaving ttlTimes.mat to: ', savedir)
     savemat(os.path.join(savedir, 'ttlTimes.mat'), savedict, format=matlab_version)
 
-#### NEEDS WORK STILL####
+
 def eisummary_creation(savedir:str,
                        templates:np.array, 
                        IDs:list, 
@@ -107,18 +109,23 @@ def eisummary_creation(savedir:str,
                 maxAmplitudes: relative amplitude of the waveform?
     '''
     print('Creating eisummary.mat file.')
-    waveform = spiketemplates[IDs]
-    print(waveform.shape)
-    center = np.nanargmin(waveform, axis=1)
-    eitime = np.arange(-center, waveform.shape[0])/(rate/1000)
+    waveform = templates[IDs]
+    center = np.nanargmin(np.min(waveform, axis=2), axis=1)
+    count, bins = np.histogram(center, bins = np.arange(waveform.shape[1]))
+    plt.bar(bins[:-1], count)
+    plt.show()
+    c = bins[np.nanargmax(count)]
+    eitime = np.arange(-c, waveform.shape[1]-c)/(rate/1000)
     maxChannels  = cluster.loc[IDs, 'ch'].values
     maxAmplitudes = cluster.loc[IDs, 'Amplitude'].values
+
     savedict = {'waveform':waveform, 
                 'eitime':eitime, 
                 'maxChannels':maxChannels, 
                 'maxAmplitudes':maxAmplitudes}
-    print('\tSaving xy.mat to: ', savedir)
+    print('\tSaving eisummary.mat to: ', savedir)
     savemat(os.path.join(savedir, 'eisummary.mat'), savedict, format=matlab_version)
+
 
 def segmentlengths_creation(savedir: str, 
                             datasep: np.array):
@@ -155,6 +162,7 @@ def segmentlengths_creation(savedir: str,
 
     print('\tSaving segmentlengths.mat to: ', savedir)
     savemat(os.path.join(savedir, 'segmentlengths.mat'), savedict, format=matlab_version)
+
 
 def xy_creation(savedir:str, 
                 IDs:list, 
@@ -200,6 +208,7 @@ def xy_creation(savedir:str,
 
     return savedict
 
+
 def basicinfo_creation(savedir:str, 
                        recordingregion:str='SC'):
     '''
@@ -221,6 +230,7 @@ def basicinfo_creation(savedir:str,
     savedict = {'recordingregion':recordingregion}
     print('\tSaving basicinfo.mat to: ', savedir)
     savemat(os.path.join(savedir, 'basicinfo.mat'), savedict, format=matlab_version)
+
 
 def asdf_creation(savedir:str, 
                   IDs:list, 
@@ -271,6 +281,7 @@ def asdf_creation(savedir:str,
     print('\tSaving asdf.mat to: ', savedir)
     savemat(os.path.join(savedir, 'asdf.mat'), savedict, format=matlab_version)
     savemat(os.path.join(savedir, 'asdf_orig.mat'), savedict, format=matlab_version)
+
 
 if __name__ == '__main__':
 
@@ -429,7 +440,7 @@ if __name__ == '__main__':
     
     xy =xy_creation(savedir, IDs, cluster)
 
-    # eisummary_creation(savedir, spiketemplates, IDs, cluster, rate=rate)
+    eisummary_creation(savedir, templates, IDs, cluster, rate=rate)
 
     segmentlengths_creation(savedir, datasep)
     
