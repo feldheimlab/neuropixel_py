@@ -52,8 +52,9 @@ def get_IDs(cluster: pd.DataFrame,
 
     '''
     IDs = cluster.loc[cluster[class_col]==group, 'cluster_id'].values
+    IDs_index = cluster.loc[cluster[class_col]==group, 'cluster_id'].index
 
-    return np.array(IDs, dtype=int)
+    return np.array(IDs, dtype=int),  np.array(IDs_index, dtype=int)
 
 
 def ttlTimes_creation(savedir:str, 
@@ -82,12 +83,13 @@ def ttlTimes_creation(savedir:str,
     savemat(os.path.join(savedir, 'ttlTimes.mat'), savedict, format=matlab_version)
 
 
-def eisummary_creation(savedir:str,
+def eisummary_template(savedir:str,
                        templates:np.array, 
                        IDs:list, 
+                       IDs_index:list,
                        cluster:pd.DataFrame, 
                        rate:int):
-        '''
+    '''
     Saves cluster waveform, with corresponding atributes
     
     Arguments:
@@ -105,19 +107,20 @@ def eisummary_creation(savedir:str,
             contains: 
                 waveform: 2-d array of the average waveform of the clustered events x neuronal IDs
                 eitime: 1-d time series for one of the waveforms in ms
-                maxChannels: which was the max channel? 
-                maxAmplitudes: relative amplitude of the waveform?
+                maxChannels: which was the max channel
+                maxAmplitudes: relative amplitude of the waveform
     '''
+    
     print('Creating eisummary.mat file.')
     waveform = templates[IDs]
+
     center = np.nanargmin(np.min(waveform, axis=2), axis=1)
     count, bins = np.histogram(center, bins = np.arange(waveform.shape[1]))
-    plt.bar(bins[:-1], count)
-    plt.show()
     c = bins[np.nanargmax(count)]
+
     eitime = np.arange(-c, waveform.shape[1]-c)/(rate/1000)
-    maxChannels  = cluster.loc[IDs, 'ch'].values
-    maxAmplitudes = cluster.loc[IDs, 'Amplitude'].values
+    maxChannels  = cluster.loc[IDs_index, 'ch'].values
+    maxAmplitudes = cluster.loc[IDs_index, 'Amplitude'].values
 
     savedict = {'waveform':waveform, 
                 'eitime':eitime, 
@@ -144,7 +147,7 @@ def segmentlengths_creation(savedir: str,
             contains: 
                 data segment lengths: the length of each subset of recording
                 data segment separations: the times at which they transition to a new subset
-                timestamp: ?
+                timestamp: start time of each stimulation experiment from recording computer?
     '''
     print('Creating segmentlengths.mat file')
     timestamps = '240807'
@@ -163,9 +166,11 @@ def segmentlengths_creation(savedir: str,
     print('\tSaving segmentlengths.mat to: ', savedir)
     savemat(os.path.join(savedir, 'segmentlengths.mat'), savedict, format=matlab_version)
 
+    return savedict
 
 def xy_creation(savedir:str, 
                 IDs:list, 
+                IDs_index:list,
                 cluster:pd.DataFrame):
     '''
     Saves the information about subsets (individual experiments) of concatenated data
@@ -190,11 +195,8 @@ def xy_creation(savedir:str,
 
     print('Making xy.mat file')
     
-    chlocation = np.zeros((IDs.shape[0],2))
-    location = np.zeros((IDs.shape[0],2))
-    for i, ID in enumerate(IDs):
-        chlocation[i] = cluster.loc[cluster['cluster_id'] == ID, ['x', 'y']].values
-        location[i] =  cluster.loc[cluster['cluster_id'] == ID, ['xs', 'ys']].values
+    chlocation = cluster.loc[IDs_index, ['x', 'y']].values
+    location = cluster.loc[IDs_index, ['xs', 'ys']].values
 
     ang = np.zeros(IDs.shape[0])
     savedict = {'x':chlocation[:,0], 
@@ -234,6 +236,7 @@ def basicinfo_creation(savedir:str,
 
 def asdf_creation(savedir:str, 
                   IDs:list, 
+                  segmentlengths:dict, 
                   spiketimes:list, 
                   spiketemplates:list, 
                   xy:dict):
@@ -264,23 +267,23 @@ def asdf_creation(savedir:str,
     location = np.zeros((IDs.shape[0],2))
     # print(cluster.head())
     location[:,0]=xy['y']            
-    location[:,1]=xy['xs']
+    location[:,1]=xy['x']
 
-    totalspikes = 0
+    totalspikes = 0 #total duration of recording
     for n, neuron in enumerate(IDs):
         try:
             asdf[n,0]=np.array(np.squeeze(spiketimes[spiketemplates==neuron]))*1000/rate
             totalspikes += asdf[n,0].shape[0]
         except:
             asdf[n,0]=np.ones(1)*np.nan
-    asdf[-2,0] = 1
-    asdf[-1,0] = [IDs.shape[0], totalspikes]
+    asdf[-2,0] = 1 #ms
+    asdf[-1,0] = [IDs.shape[0], segmentlengths['segmentseparations'][-1]]
     savedict = {'IDs':np.array(IDs).reshape(-1,1), 
                 'location':location, 
                 'asdf_raw': asdf}
     print('\tSaving asdf.mat to: ', savedir)
     savemat(os.path.join(savedir, 'asdf.mat'), savedict, format=matlab_version)
-    savemat(os.path.join(savedir, 'asdf_orig.mat'), savedict, format=matlab_version)
+    # savemat(os.path.join(savedir, 'asdf_orig.mat'), savedict, format=matlab_version)
 
 
 if __name__ == '__main__':
@@ -435,15 +438,15 @@ if __name__ == '__main__':
         plt.savefig(os.path.join(savedir, 'cluster_loc_group_based.png'), dpi=300)
         # plt.show()
 
-    IDs = get_IDs(cluster, class_col, matlab_version=matlab_version, group='good')
+    IDs, IDs_index = get_IDs(cluster, class_col, matlab_version=matlab_version, group='good')
     ttlTimes_creation(savedir, ttls=rised, matlab_version=matlab_version, rate=rate)
     
-    xy =xy_creation(savedir, IDs, cluster)
+    xy = xy_creation(savedir, IDs, IDs_index, cluster)
 
-    eisummary_creation(savedir, templates, IDs, cluster, rate=rate)
+    eisummary_template(savedir, templates, IDs, IDs_index, cluster, rate=rate)
 
-    segmentlengths_creation(savedir, datasep)
+    segmentlengths = segmentlengths_creation(savedir, datasep)
     
     basicinfo_creation(savedir, recordingregion='SC')
 
-    asdf_creation(savedir, IDs, spiketimes, spiketemplates, xy)
+    asdf_creation(savedir, IDs, segmentlengths, spiketimes, spiketemplates, xy)
