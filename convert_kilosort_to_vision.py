@@ -309,7 +309,7 @@ if __name__ == '__main__':
         help = 'saves output graphs and initial assessements of the data')
     ap.add_argument('-g', '--group_tsv', type = str,
         default='cluster_info.tsv',  
-        help = 'tsv with specified aves output graphs and initial assessements of the data')
+        help = 'tsv with specified classified clusters')
     ap.add_argument('-c', '--class_col', type = str,
         default='KSLabel', 
         help = 'column name of group tsv that indicates that classification of neuronal dataset')
