@@ -25,13 +25,14 @@ import sys
 import numpy as np
 import pandas as pd
 
+import matplotlib
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from scipy.io import savemat
 
 sys.path.append('../auditoryAnalysis/python/')
-from preprocessing import probeMap
+from preprocessing import probeMap, ttl_rise
 
 
 def get_IDs(cluster: pd.DataFrame, 
@@ -131,7 +132,8 @@ def eisummary_template(savedir:str,
 
 
 def segmentlengths_creation(savedir: str, 
-                            datasep: np.array):
+                            datasep: np.array,
+                            fps:int):
     '''
     Saves the information about subsets (individual experiments) of concatenated data
     
@@ -150,14 +152,16 @@ def segmentlengths_creation(savedir: str,
                 timestamp: start time of each stimulation experiment from recording computer?
     '''
     print('Creating segmentlengths.mat file')
-    timestamps = '240807'
+    timestamps = 'xxxx' # this should be the time of data collection
 
     try:
+        print('\tFound data seperation data from python code.')
         segmentlengths = np.array(datasep.item().get('Datalength'))
         segmentseparations = np.array(datasep.item().get('Datasep'))
     except:
-        segmentseparations = datasep
-        segmentlengths = np.diff(datasep)
+        print('\tFound data from matlab code.')
+        segmentseparations = datasep*(1000/fps)
+        segmentlengths = np.diff(datasep)*(1000/fps)
 
     savedict = {'timestamps':timestamps, 
                 'segmentlengths':segmentlengths, 
@@ -272,7 +276,7 @@ def asdf_creation(savedir:str,
     totalspikes = 0 #total duration of recording
     for n, neuron in enumerate(IDs):
         try:
-            asdf[n,0]=np.array(np.squeeze(spiketimes[spiketemplates==neuron]))*1000/rate
+            asdf[n,0]=np.array(np.squeeze(spiketimes[spiketemplates==neuron]), dtype='float32')*1000/rate
             totalspikes += asdf[n,0].shape[0]
         except:
             asdf[n,0]=np.ones(1)*np.nan
@@ -280,7 +284,7 @@ def asdf_creation(savedir:str,
     asdf[-1,0] = [IDs.shape[0], segmentlengths['segmentseparations'][-1]]
     savedict = {'IDs':np.array(IDs).reshape(-1,1), 
                 'location':location, 
-                'asdf_raw': asdf}
+                'asdf_raw': asdf.astype(float)}
     print('\tSaving asdf.mat to: ', savedir)
     savemat(os.path.join(savedir, 'asdf.mat'), savedict, format=matlab_version)
     # savemat(os.path.join(savedir, 'asdf_orig.mat'), savedict, format=matlab_version)
@@ -304,9 +308,8 @@ if __name__ == '__main__':
     ap.add_argument('-f', '--fps', type = int,
         default=30000,  
         help = 'frames per second for data collection')
-    ap.add_argument('-s', '--save', type = bool,
-        default=True, 
-        help = 'saves output graphs and initial assessements of the data')
+    ap.add_argument('-ds', '--dontsave', action='store_false',
+        help = 'if flagged, it will not save output graphs and initial assessements of the data')
     ap.add_argument('-g', '--group_tsv', type = str,
         default='cluster_info.tsv',  
         help = 'tsv with specified classified clusters')
@@ -319,6 +322,7 @@ if __name__ == '__main__':
     kilosortloc = args['input_directory']
     assert os.path.exists(kilosortloc), 'Could not find: {}'.format(kilosortloc)
     parentdir = os.path.dirname(kilosortloc)
+    print(parentdir)
     savedir = os.path.join(parentdir, 'vision')
     
     if not os.path.exists(savedir):
@@ -329,10 +333,12 @@ if __name__ == '__main__':
     rate = args['fps']
     clusterdef = args['group_tsv']
     class_col = args['class_col']
-    save = args['save']
+    save = args['dontsave']
     matlab_version = '5'
 
     if save:
+        colormap = 'viridis'
+        cmap_values = matplotlib.cm.get_cmap(colormap)
         print('\tGraphs, txt, and data files will be saved in the same location.')
         with open(os.path.join(savedir,'processed.txt'), 'w') as f:
             print('Processing kilosort file: ', kilosortloc, file=f)
@@ -357,9 +363,16 @@ if __name__ == '__main__':
     try:
         datasep = np.squeeze(np.load(os.path.join(kilosortloc, 'datasep.npy'), allow_pickle=True)) 
         rised = np.load(os.path.join(kilosortloc, 'ttlTimes.npy'))
+        if os.path.exists(os.path.join(kilosortloc,'digital.npy')):
+            print('Found the digital.npy file, continuing to determine TTLs form')
+            digital = np.load(os.path.join(kilosortloc,'digital.npy'))
+            rised = ttl_rise(digital, rate=rate)
     except:
         datasep = np.squeeze(np.load(os.path.join(parentdir, 'datasep.npy'), allow_pickle=True)) 
         rised = np.load(os.path.join(parentdir, 'ttlTimes.npy'))
+        if os.path.exists(os.path.join(kilosortloc,'digital.npy')):
+            digital = np.load(os.path.join(kilosortloc,'digital.npy'))
+            rised = ttl_rise(digital, rate=rate)
 
     assert 'rised' in globals(), 'Could not find ttlTimes'
     assert 'datasep' in globals(), 'Could not find Datasep'
@@ -369,13 +382,14 @@ if __name__ == '__main__':
 
     #create asdf strucured array, each index is a new neuron
     neuron_clust = np.unique(spiketemplates)#determine unique clusters from the spiketemplates 
-
+    groups = ['good', 'mua', 'noise']
+    
     if save:
         with open(os.path.join(savedir,'processed.txt'), 'a') as f:
             neurons = cluster[cluster[class_col]=='good']
             neurons = pd.concat([neurons, cluster[cluster[class_col]=='mua']])
 
-            groups = ['good', 'mua', 'noise']
+            
             print('\nProcessing kilosort file: ', kilosortloc, file=f)
             for group in groups:
                 frac = len(cluster[cluster[class_col]==group])/len(cluster)
@@ -419,15 +433,15 @@ if __name__ == '__main__':
                 pos = chanposition[clust.loc[index, 'ch']]
                 pos[1] = clust.loc[index, 'xs']
                 pos[0] = clust.loc[index, 'ys']
-                color=clust.loc[index, 'group_c']
-                axs[j].scatter(pos[1], pos[0], c=color, alpha=0.25, vmin=0, vmax=2)
+                color= clust.loc[index, 'group_c']
+                axs[j].scatter(pos[1], pos[0], color=cmap_values(color/(len(groups)-1)), alpha=0.25, vmin=0, vmax=2)
                 axs[j].set_ylim(ylim)
                 
         axs[0].set_ylabel('depth (um)')
         axs[1].set_xlabel('span (um)')
         axs[3].set_xlabel('FR')
 
-        im1 = axs[3].scatter(cluster['fr'], cluster['depth']%750,  c=cluster['group_c'], alpha=0.25, vmin=0, vmax=2)
+        im1 = axs[3].scatter(cluster['fr'], cluster['depth'],  c=cluster['group_c'], cmap=colormap, alpha=0.25, vmin=0, vmax=2)
         axs[3].set_ylim(ylim)
         divider = make_axes_locatable(axs[3])
 
@@ -445,7 +459,7 @@ if __name__ == '__main__':
 
     eisummary_template(savedir, templates, IDs, IDs_index, cluster, rate=rate)
 
-    segmentlengths = segmentlengths_creation(savedir, datasep)
+    segmentlengths = segmentlengths_creation(savedir, datasep, fps=rate)
     
     basicinfo_creation(savedir, recordingregion='SC')
 
