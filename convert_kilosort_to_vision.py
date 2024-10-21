@@ -52,8 +52,12 @@ def get_IDs(cluster: pd.DataFrame,
         IDs: cluster ids from sorting to be included in the saved output
 
     '''
-    IDs = cluster.loc[cluster[class_col]==group, 'cluster_id'].values
-    IDs_index = cluster.loc[cluster[class_col]==group, 'cluster_id'].index
+    if group=='all':
+        IDs = cluster['cluster_id'].values
+        IDs_index = cluster['cluster_id'].index
+    else:
+        IDs = cluster.loc[cluster[class_col]==group, 'cluster_id'].values
+        IDs_index = cluster.loc[cluster[class_col]==group, 'cluster_id'].index
 
     return np.array(IDs, dtype=int),  np.array(IDs_index, dtype=int)
 
@@ -284,7 +288,7 @@ def asdf_creation(savedir:str,
     asdf[-1,0] = [IDs.shape[0], segmentlengths['segmentseparations'][-1]]
     savedict = {'IDs':np.array(IDs).reshape(-1,1), 
                 'location':location, 
-                'asdf_raw': asdf.astype(float)}
+                'asdf_raw': np.array(asdf, dtype='object')}
     print('\tSaving asdf.mat to: ', savedir)
     savemat(os.path.join(savedir, 'asdf.mat'), savedict, format=matlab_version)
     # savemat(os.path.join(savedir, 'asdf_orig.mat'), savedict, format=matlab_version)
@@ -301,7 +305,7 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('-i', '--input_directory', type = str,
         required = True, 
-        help = 'path to the kilosort4 files for concatenation')
+        help = 'path to the kilosort4 file for processing')
     ap.add_argument('-p', '--probe', type = str,
         default='npxl', 
         help = 'generates the correct probemap, this can be "A", "AN", or "npxl"')
@@ -313,9 +317,14 @@ if __name__ == '__main__':
     ap.add_argument('-g', '--group_tsv', type = str,
         default='cluster_info.tsv',  
         help = 'tsv with specified classified clusters')
+    ap.add_argument('-st', '--skipttls', action='store_false',
+        help = 'if flagged, it will not save ttls output')
     ap.add_argument('-c', '--class_col', type = str,
         default='KSLabel', 
         help = 'column name of group tsv that indicates that classification of neuronal dataset')
+    ap.add_argument('-class', '--class', type = str,
+        default='all', 
+        help = "which classifications to include: 'all', 'good', 'mua'")
     args = vars(ap.parse_args())
 
     #necessary paths
@@ -333,8 +342,12 @@ if __name__ == '__main__':
     rate = args['fps']
     clusterdef = args['group_tsv']
     class_col = args['class_col']
+    classification = args['class']
     save = args['dontsave']
     matlab_version = '5'
+    skipttls = args['skipttls']
+
+
 
     if save:
         colormap = 'viridis'
@@ -359,23 +372,29 @@ if __name__ == '__main__':
     templates = np.load(os.path.join(kilosortloc, 'templates.npy')) #waveforms
     spikepositions = np.squeeze(np.load(os.path.join(kilosortloc, 'spike_positions.npy'), allow_pickle=True))
 
-    #get session/data separations times
-    try:
-        datasep = np.squeeze(np.load(os.path.join(kilosortloc, 'datasep.npy'), allow_pickle=True)) 
-        rised = np.load(os.path.join(kilosortloc, 'ttlTimes.npy'))
-        if os.path.exists(os.path.join(kilosortloc,'digital.npy')):
-            print('Found the digital.npy file, continuing to determine TTLs form')
-            digital = np.load(os.path.join(kilosortloc,'digital.npy'))
-            rised = ttl_rise(digital, rate=rate)
-    except:
-        datasep = np.squeeze(np.load(os.path.join(parentdir, 'datasep.npy'), allow_pickle=True)) 
-        rised = np.load(os.path.join(parentdir, 'ttlTimes.npy'))
-        if os.path.exists(os.path.join(kilosortloc,'digital.npy')):
-            digital = np.load(os.path.join(kilosortloc,'digital.npy'))
-            rised = ttl_rise(digital, rate=rate)
+    if skipttls:
+        spike_max = np.max(spiketimes)
+        datasep = {'Datasep':[0,spike_max], 'Datalength':[spike_max]}
+    else:
+        #get session/data separations times
+        try:
+            datasep = np.squeeze(np.load(os.path.join(kilosortloc, 'datasep.npy'), allow_pickle=True)) 
+            rised = np.load(os.path.join(kilosortloc, 'ttlTimes.npy'))
+            if os.path.exists(os.path.join(kilosortloc,'digital.npy')):
+                print('Found the digital.npy file, continuing to determine TTLs form')
+                digital = np.load(os.path.join(kilosortloc,'digital.npy'))
+                rised = ttl_rise(digital, rate=rate)
+        except:
+            datasep = np.squeeze(np.load(os.path.join(parentdir, 'datasep.npy'), allow_pickle=True)) 
+            rised = np.load(os.path.join(parentdir, 'ttlTimes.npy'))
+            if os.path.exists(os.path.join(kilosortloc,'digital.npy')):
+                digital = np.load(os.path.join(kilosortloc,'digital.npy'))
+                rised = ttl_rise(digital, rate=rate)
+
+        ttlTimes_creation(savedir, ttls=rised, matlab_version=matlab_version, rate=rate)
 
     assert 'rised' in globals(), 'Could not find ttlTimes'
-    assert 'datasep' in globals(), 'Could not find Datasep'
+    assert 'datasep' in globals(): 'Could not find Datasep'
 
     #load channel maps
     chanposition = probeMap(probe=probe)
@@ -414,6 +433,7 @@ if __name__ == '__main__':
     for i, group in enumerate(groups):
         cluster.loc[cluster[cluster[class_col]==group].index, 'group_c'] = int(i)
 
+    chanposition = probeMap(probe=probe)
     for c_id in cluster['cluster_id']:        
         points = spikepositions[spiketemplates==c_id]
         cluster.loc[cluster['cluster_id']==c_id, 'xs']=np.mean(points[:,0])
@@ -426,7 +446,7 @@ if __name__ == '__main__':
         fig, axs = plt.subplots(1,4, figsize = (10,5), sharey=True)
 
         for j, group in enumerate(groups):
-            chanposition = probeMap(probe=probe)
+            
             axs[j].scatter(chanposition[:,1], chanposition[:,0], facecolors='None', edgecolors='k')
             clust = cluster[cluster[class_col]==group].copy()
             for index in clust.index:        
@@ -452,14 +472,14 @@ if __name__ == '__main__':
         plt.savefig(os.path.join(savedir, 'cluster_loc_group_based.png'), dpi=300)
         # plt.show()
 
-    IDs, IDs_index = get_IDs(cluster, class_col, matlab_version=matlab_version, group='good')
-    ttlTimes_creation(savedir, ttls=rised, matlab_version=matlab_version, rate=rate)
+    IDs, IDs_index = get_IDs(cluster, class_col, matlab_version=matlab_version, group=classification)
     
     xy = xy_creation(savedir, IDs, IDs_index, cluster)
 
     eisummary_template(savedir, templates, IDs, IDs_index, cluster, rate=rate)
-
-    segmentlengths = segmentlengths_creation(savedir, datasep, fps=rate)
+    
+    if not '' in globals():
+        segmentlengths = segmentlengths_creation(savedir, datasep, fps=rate)
     
     basicinfo_creation(savedir, recordingregion='SC')
 

@@ -32,7 +32,11 @@ sys.path.append('../auditoryAnalysis/python/')
 sys.path.append('../load_intan_rhd_format/')
 
 from preprocessing import ttl_rise
-from load_intan_rhd_format import *
+try:
+    from load_intan_rhd_format import *
+except Exception as e:
+    print(e)
+    print('Cannot work with Intan files.')
 
 from preprocessing import ttl_rise
 from convert_kilosort_to_vision import get_IDs
@@ -45,10 +49,7 @@ def get_file_org(dataset_dir: str,
     print('Concatenating data ', dataset_dir)
     folders = os.listdir(dataset_dir)
 
-    if intan:
-        maxlength = 8
-    else:
-        maxlength = 14
+    maxlength = 8
 
     dtype = np.dtype('int16')  # for spikeglx recordings
     nchannels = 385 # spikeglx recordings from 1.0 and 2.0
@@ -74,7 +75,7 @@ def get_file_org(dataset_dir: str,
                                 org.append(os.path.join(folder, file))
                     else:
                         org = folder + '/' + folder +'_imec0' + '/' + folder + '_t0.imec0.ap.bin'
-                    folders_org.extend(org)
+                    folders_org.append(org)
                     # fname = os.path.join(dataset_dir, org)
                     # print('\t'+fname)
                 else:
@@ -92,7 +93,7 @@ def get_file_org(dataset_dir: str,
                                     org.append(os.path.join(folder, file))
                         else:
                             org = folder + '/' + folder +'_imec0' + '/' + folder + '_t0.imec0.ap.bin'
-                        folders_org.extend(org)
+                        folders_org.append(org)
                         # print('\t'+fname)
                         j += 1
     if intan:
@@ -136,10 +137,9 @@ def concatentate_npx_data(dataset_dir: str,
     fsave = open(savefile, 'wb')
 
     #open each individiual datafile to copy to the concatnetated bin file
-    for datafile in folders_org: 
+    for datafile in folders_org:
         fo=open(os.path.join(dataset_dir, datafile), 'rb')
         shutil.copyfileobj(fo, fsave)
-        datasep.append()
         fo.close()
     fsave.close()
 
@@ -222,6 +222,7 @@ def ttl_npx_data(dataset_dir: str,
     dtype = np.dtype('int16')  # for spikeglx recordings 
     nchannels = 385 # spikeglx recordings from 1.0 and 2.0
     dig_channel = 384
+    overlap = 5
 
     # Variables to save
     total_time = 0
@@ -250,6 +251,7 @@ def ttl_npx_data(dataset_dir: str,
         #read the data in batches
         batchsz = 60 * fps #batch size
         batches = np.arange(batchsz,int(nsamples)+batchsz, batchsz)
+        print(batches)
         print('\tTotal time of dataset: {} sec'.format(np.round(segmentlength[-1]/1000)))
         print('\tTotal number of batches (1 minute each): ', len(batches))
         
@@ -257,13 +259,13 @@ def ttl_npx_data(dataset_dir: str,
             if (b % 10)==0:
                 print('\t\tWorking on batch :', b)
             if b == 0:
-                digital = dat[:batch, dig_channel].astype('float16')
-                digital[digital>0]=1
-                ttls.extend(list(ttl_rise(digital, rate=fps)+datasep[-1]))
+                digital = dat[:batch+overlap, dig_channel].astype('float16')
+                digital[digital>0.5]=1
+                ttls.extend(list(ttl_rise(digital, rate=fps)+datasep[-2]))
             else:
-                digital = dat[batches[b-1]:batch, dig_channel].astype('float16')
-                digital[digital>0]=1
-                ttls.extend(list(ttl_rise(digital, rate=fps)+datasep[-1]+batches[b-1]*(1000/fps)))
+                digital = dat[batches[b-1]:batch+overlap, dig_channel].astype('float16')
+                digital[digital>0.5]=1
+                ttls.extend(list(ttl_rise(digital, rate=fps)+datasep[-2]+batches[b-1]*(1000/fps)))
 
     print('\nDatasep:', datasep)
     print('Datalength:', segmentlength)
@@ -479,8 +481,6 @@ if __name__ == '__main__':
     else:
         datasets = None
     
-    print(datasets)
-
     if datasets!=None:
         if len(datasets) == 1:
             print('Only one datafile specified.')
