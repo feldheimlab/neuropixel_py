@@ -394,7 +394,7 @@ if __name__ == '__main__':
         ttlTimes_creation(savedir, ttls=rised, matlab_version=matlab_version, rate=rate)
 
     assert 'rised' in globals(), 'Could not find ttlTimes'
-    assert 'datasep' in globals(): 'Could not find Datasep'
+    assert 'datasep' in globals(), 'Could not find Datasep'
 
     #load channel maps
     chanposition = probeMap(probe=probe)

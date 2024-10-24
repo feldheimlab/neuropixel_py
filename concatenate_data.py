@@ -184,7 +184,7 @@ def concatentate_intan_data(dataset_dir: str,
                     
                     rised = list(ttl_rise(digital_data, fps)+segmentlength*(1000/fps))
                 else:
-                    rised.extend(list(ttl_rise(digital_data, fps)+(datasep[-1]+segmentlength)*(1000/fps)))
+                    rised.extend(list(ttl_rise(digital_data, fps)+(datasep[-2]+segmentlength)*(1000/fps)))
                 segmentlength += data['amplifier_data'].shape[1]*(1000/fps)
             datasep.append(datasep[-1] + segmentlength)
     close(savefile)
@@ -251,7 +251,6 @@ def ttl_npx_data(dataset_dir: str,
         #read the data in batches
         batchsz = 60 * fps #batch size
         batches = np.arange(batchsz,int(nsamples)+batchsz, batchsz)
-        print(batches)
         print('\tTotal time of dataset: {} sec'.format(np.round(segmentlength[-1]/1000)))
         print('\tTotal number of batches (1 minute each): ', len(batches))
         
@@ -390,34 +389,41 @@ def fft_raw_data(dataset_dir:str,
 
         # lets take the samples from around 30sec into the recording
         idx = np.arange(fps*time_dur).astype(int)
-        print('{} seconds used for analysis'.format(idx.shape[0]/fps))
+        print('FFT analysis: {} seconds used for analysis'.format(idx.shape[0]/fps))
         nplot = 10
-        print('Only the first {} timeseries are plotted'.fomrat(nplot))
+        diff = 0
+        print('\tOnly {} timeseries from various locations on the probe are plotted'.format(nplot))
         fig, axs = plt.subplots(2,1, figsize=(15,5))
+        plotchanels = nchannels//nplot
         for ichan in np.arange(nchannels):
             y = dat[idx+int(time_offset*fps),ichan].astype('float32')
             #subtract the mean (for plotting)
             y -= y.mean()
-            if ichan<nplot:                
-                axs[0].plot(idx[:fps]/fps,y[:fps]+i*200, color='k', alpha=0.1)
-
+            if ichan%plotchanels==0:
+                ploty = y[:fps//2]-np.convolve(y[:fps//2], np.ones(100)/100, mode='same')                
+                axs[0].plot(idx[:fps//2]/fps, ploty+diff, color='k', linewidth=1, alpha=1)
+                axs[0].text(0.5, diff, ichan)
+                diff += np.abs(np.min(ploty))*3
             yf = scipy.fftpack.fft(y)
             if ichan==0:
                 T = 1.0 / fps
                 N = idx.shape[0]
                 xf = np.linspace(0.0, 1.0/(2.0*T), N//2)
-            axs[1].plot(xf, np.convolve(2.0/N * np.abs(yf[:N//2]), np.ones(10), mode='same'), color='k', alpha=0.01)
+            axs[1].plot(xf, np.convolve(2.0/N * np.abs(yf[:N//2]), np.ones(10), mode='same'), color='k', alpha=1/255)
 
         axs[0].set_xlabel('time (s)')
         axs[0].set_ylabel('rel. amp')
-        axs[1].set_xlim(0,320)
+        axs[1].set_xlim(0,1000)
+        axs[1].set_xticks(np.arange(0,1000,60))
+        axs[1].set_ylim(.01,400)
         axs[1].set_xlabel('frequency')
         axs[1].set_ylabel('power')
         axs[1].set_yscale('log')
         plt.tight_layout()
-        parentdir = os.path.dirname(fname)
-        print('Saving fft data: ', os.path.dirname(savefile))  
-        plt.savefig(os.path.join(os.path.dirname(savefile), '{}_fft.png'.format(parentdir[-2:]), dpi=300))
+        parentdir = os.path.dirname(os.path.dirname(fname))
+        savename = os.path.join(os.path.dirname(savefile), '{}_fft.png'.format(os.path.basename(parentdir)))
+        print('\tSaving fft data: ', savename)  
+        plt.savefig(savename, dpi=300)
 
 
 if __name__ == '__main__':
@@ -522,10 +528,10 @@ if __name__ == '__main__':
         else:
             if concatenate:
                 concatentate_npx_data(dataset_dir, folders_org, savefile)
-            ttl_npx_data(dataset_dir, savefile, folders_org, fps)
+            # ttl_npx_data(dataset_dir, savefile, folders_org, fps)
     
     if fft:
-        fft_raw_data(dataset_dir, folders_org, savefile, fps, time_offset, time_dur)
+        fft_raw_data(dataset_dir, folders_org, savefile, fps)
 
     if waveform:
         try:
