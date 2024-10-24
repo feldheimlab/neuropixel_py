@@ -317,7 +317,7 @@ if __name__ == '__main__':
     ap.add_argument('-g', '--group_tsv', type = str,
         default='cluster_info.tsv',  
         help = 'tsv with specified classified clusters')
-    ap.add_argument('-st', '--skipttls', action='store_false',
+    ap.add_argument('-st', '--skipttls', action='store_true',
         help = 'if flagged, it will not save ttls output')
     ap.add_argument('-c', '--class_col', type = str,
         default='KSLabel', 
@@ -384,7 +384,7 @@ if __name__ == '__main__':
                 print('Found the digital.npy file, continuing to determine TTLs form')
                 digital = np.load(os.path.join(kilosortloc,'digital.npy'))
                 rised = ttl_rise(digital, rate=rate)
-        except:
+        except Exception as e:
             datasep = np.squeeze(np.load(os.path.join(parentdir, 'datasep.npy'), allow_pickle=True)) 
             rised = np.load(os.path.join(parentdir, 'ttlTimes.npy'))
             if os.path.exists(os.path.join(kilosortloc,'digital.npy')):
@@ -392,7 +392,6 @@ if __name__ == '__main__':
                 rised = ttl_rise(digital, rate=rate)
 
         ttlTimes_creation(savedir, ttls=rised, matlab_version=matlab_version, rate=rate)
-
     assert 'rised' in globals(), 'Could not find ttlTimes'
     assert 'datasep' in globals(), 'Could not find Datasep'
 
@@ -446,7 +445,7 @@ if __name__ == '__main__':
         fig, axs = plt.subplots(1,4, figsize = (10,5), sharey=True)
 
         for j, group in enumerate(groups):
-            
+            chanposition = probeMap(probe=probe)
             axs[j].scatter(chanposition[:,1], chanposition[:,0], facecolors='None', edgecolors='k')
             clust = cluster[cluster[class_col]==group].copy()
             for index in clust.index:        
