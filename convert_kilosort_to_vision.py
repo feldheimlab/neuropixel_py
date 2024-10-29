@@ -61,6 +61,62 @@ def get_IDs(cluster: pd.DataFrame,
 
     return np.array(IDs, dtype=int),  np.array(IDs_index, dtype=int)
 
+def make_cluster_info(kilosort_location:str,
+                      rate:int,
+                      save:bool = True):
+    
+    '''
+    Creates cluster info of IDs of the classification indicated
+    
+    Arguments:
+        cluster: pd.DataFrame the indicates classification of clusters (usually saved from phy)
+        class_col: column in the pd.DataFrame that the classifcation is in
+        matlab_version: matlab version for saving using scipy.io
+        group: which classification used, could be 'good', 'mua', 'noise'
+
+    Returns:
+        IDs: cluster ids from sorting to be included in the saved output
+
+    '''
+    
+    print('Creating cluster_info.tsv')
+
+    cluster = pd.read_csv(os.path.join(kilosort_location, 'cluster_Amplitude.tsv'), sep='\t')
+    KSlabel = pd.read_csv(os.path.join(kilosort_location, 'cluster_KSLabel.tsv'), sep='\t')
+    contamPct = pd.read_csv(os.path.join(kilosort_location, 'cluster_ContamPct.tsv'), sep='\t')
+
+    amps = np.load(os.path.join(kilosort_location, 'amplitudes.npy'))
+    channel_map = np.load(os.path.join(kilosort_location, 'channel_map.npy'))
+    channel_positions = np.load(os.path.join(kilosort_location, 'channel_positions.npy'))
+
+    spiketemplates = np.load(os.path.join(kilosort_location, 'spike_clusters.npy')) # to make asdf
+    spiketimes = np.load(os.path.join(kilosort_location, 'spike_times.npy')) # to make asdf
+    templates = np.load(os.path.join(kilosort_location, 'templates.npy')) #waveforms
+    spikepositions = np.squeeze(np.load(os.path.join(kilosort_location, 'spike_positions.npy'), allow_pickle=True))
+
+    maxtime = np.max(spiketimes)/rate
+    
+    for clust in cluster['cluster_id']:
+        spktime = np.array(np.squeeze(spiketimes[spiketemplates==clust]), dtype='float32')
+
+        cluster.loc[cluster['cluster_id']==clust, 'KSLabel']=KSlabel.loc[KSlabel['cluster_id']==clust, 'KSLabel']
+        cluster.loc[cluster['cluster_id']==clust, 'ContamPct']=contamPct.loc[contamPct['cluster_id']==clust, 'ContamPct']
+        cluster.loc[cluster['cluster_id']==clust, 'amp']=np.mean(amps[spiketemplates==clust])
+        ch = np.argmax(np.max(np.abs(templates[clust, :, :]), axis=0))
+        cluster.loc[cluster['cluster_id']==clust, 'ch']= ch
+        cluster.loc[cluster['cluster_id']==clust, 'depth']=channel_positions[ch,1]
+        cluster.loc[cluster['cluster_id']==clust, 'fr']=spktime.shape[0]/maxtime
+        cluster.loc[cluster['cluster_id']==clust, 'group']=np.nan
+        cluster.loc[cluster['cluster_id']==clust, 'n_spikes']=spktime.shape[0]
+        cluster.loc[cluster['cluster_id']==clust, 'sh']=0#shank?        
+
+    
+    if save:
+        print('\tSaving .tsv to ', os.path.join(kilosort_location, 'cluster_info.tsv'))
+        cluster.to_csv(os.path.join(kilosort_location, 'cluster_info.tsv'), sep='\t')
+
+    return cluster, spiketemplates, spiketimes, templates, spikepositions
+
 
 def ttlTimes_creation(savedir:str, 
                       ttls:np.array, 
@@ -331,7 +387,6 @@ if __name__ == '__main__':
     kilosortloc = args['input_directory']
     assert os.path.exists(kilosortloc), 'Could not find: {}'.format(kilosortloc)
     parentdir = os.path.dirname(kilosortloc)
-    print(parentdir)
     savedir = os.path.join(parentdir, 'vision')
     
     if not os.path.exists(savedir):
@@ -347,8 +402,6 @@ if __name__ == '__main__':
     matlab_version = '5'
     skipttls = args['skipttls']
 
-
-
     if save:
         colormap = 'viridis'
         cmap_values = matplotlib.cm.get_cmap(colormap)
@@ -362,19 +415,24 @@ if __name__ == '__main__':
         print('\tOnly data files will be saved.')
 
     #load kilosort data
-    #spikes information
-    cluster = pd.read_csv(os.path.join(kilosortloc, clusterdef), sep='\t') #class 
-    #spike cluster in order of event
-    spiketemplates = np.load(os.path.join(kilosortloc, 'spike_clusters.npy')) # to make asdf
-    #event times
-    spiketimes = np.load(os.path.join(kilosortloc, 'spike_times.npy')) # to make asdf
-    #waveforms for original clusters
-    templates = np.load(os.path.join(kilosortloc, 'templates.npy')) #waveforms
-    spikepositions = np.squeeze(np.load(os.path.join(kilosortloc, 'spike_positions.npy'), allow_pickle=True))
+    try:
+        #spikes information
+        cluster = pd.read_csv(os.path.join(kilosortloc, clusterdef), sep='\t') #class
+        print('\t Loading Kilosort data')
+        #spike cluster in order of event
+        spiketemplates = np.load(os.path.join(kilosortloc, 'spike_clusters.npy')) # to make asdf
+        #event times
+        spiketimes = np.load(os.path.join(kilosortloc, 'spike_times.npy')) # to make asdf
+        #waveforms for original clusters
+        templates = np.load(os.path.join(kilosortloc, 'templates.npy')) #waveforms
+        spikepositions = np.squeeze(np.load(os.path.join(kilosortloc, 'spike_positions.npy'), allow_pickle=True))
+    except:
+        print('\tMaking cluster_info.tsv and loading Kilosort data')
+        cluster, spiketemplates, spiketimes, templates, spikepositions = make_cluster_info(kilosortloc)
 
     if skipttls:
         spike_max = np.max(spiketimes)
-        datasep = {'Datasep':[0,spike_max], 'Datalength':[spike_max]}
+        datasep = [0,spike_max]
     else:
         #get session/data separations times
         try:
@@ -392,7 +450,8 @@ if __name__ == '__main__':
                 rised = ttl_rise(digital, rate=rate)
 
         ttlTimes_creation(savedir, ttls=rised, matlab_version=matlab_version, rate=rate)
-    assert 'rised' in globals(), 'Could not find ttlTimes'
+        assert 'rised' in globals(), 'Could not find ttlTimes'
+    
     assert 'datasep' in globals(), 'Could not find Datasep'
 
     #load channel maps
@@ -422,6 +481,7 @@ if __name__ == '__main__':
                 #                                           np.round(frac2*100, 2)))  
                 print('\t\t{0} fraction {1}/{2}: {3}%'.format(group, len(neurons[neurons[class_col]==group]), 
                                                          len(neurons), np.round(frac*100, 2)))
+    
     #visualize where the clusters are located across the probe
     if probe == 'npxl':
         ylim = [-50,775]
@@ -431,15 +491,19 @@ if __name__ == '__main__':
     cluster['group_c'] = cluster[class_col]
     for i, group in enumerate(groups):
         cluster.loc[cluster[cluster[class_col]==group].index, 'group_c'] = int(i)
-
-    chanposition = probeMap(probe=probe)
-    for c_id in cluster['cluster_id']:        
-        points = spikepositions[spiketemplates==c_id]
-        cluster.loc[cluster['cluster_id']==c_id, 'xs']=np.mean(points[:,0])
-        cluster.loc[cluster['cluster_id']==c_id, 'ys']=np.mean(points[:,1])
-        pos = np.squeeze(chanposition[cluster.loc[cluster['cluster_id'] == c_id, 'ch'].values,:])
-        cluster.loc[cluster['cluster_id']==c_id, 'x']=pos[1]
-        cluster.loc[cluster['cluster_id']==c_id, 'y']=pos[0]
+    
+    if 'xs' not in cluster.columns:
+        print('Updating cluster information in the .tsv')
+        chanposition = probeMap(probe=probe)
+        for c_id in cluster['cluster_id']:        
+            points = spikepositions[spiketemplates==c_id]
+            cluster.loc[cluster['cluster_id']==c_id, 'xs']=np.mean(points[:,0])
+            cluster.loc[cluster['cluster_id']==c_id, 'ys']=np.mean(points[:,1])
+            pos = np.squeeze(chanposition[cluster.loc[cluster['cluster_id'] == c_id, 'ch'].values,:])
+            cluster.loc[cluster['cluster_id']==c_id, 'x']=pos[1]
+            cluster.loc[cluster['cluster_id']==c_id, 'y']=pos[0]
+        print('\tSaving .tsv to ', os.path.join(kilosort_location, 'cluster_info.tsv'))
+        cluster.to_csv(os.path.join(kilosort_location, 'cluster_info.tsv'), sep='\t')
 
     if save:
         fig, axs = plt.subplots(1,4, figsize = (10,5), sharey=True)
@@ -470,6 +534,7 @@ if __name__ == '__main__':
         cbar.set_ticklabels(groups)
         plt.savefig(os.path.join(savedir, 'cluster_loc_group_based.png'), dpi=300)
         # plt.show()
+        
 
     IDs, IDs_index = get_IDs(cluster, class_col, matlab_version=matlab_version, group=classification)
     
@@ -477,8 +542,7 @@ if __name__ == '__main__':
 
     eisummary_template(savedir, templates, IDs, IDs_index, cluster, rate=rate)
     
-    if not '' in globals():
-        segmentlengths = segmentlengths_creation(savedir, datasep, fps=rate)
+    segmentlengths = segmentlengths_creation(savedir, datasep, fps=rate)
     
     basicinfo_creation(savedir, recordingregion='SC')
 
