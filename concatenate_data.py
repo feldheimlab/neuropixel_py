@@ -528,7 +528,7 @@ if __name__ == '__main__':
         else:
             if concatenate:
                 concatentate_npx_data(dataset_dir, folders_org, savefile)
-            # ttl_npx_data(dataset_dir, savefile, folders_org, fps)
+            ttl_npx_data(dataset_dir, savefile, folders_org, fps)
     
     if fft:
         fft_raw_data(dataset_dir, folders_org, savefile, fps)
