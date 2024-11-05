@@ -103,7 +103,7 @@ def make_cluster_info(kilosort_location:str,
         cluster.loc[cluster['cluster_id']==clust, 'ContamPct']=contamPct.loc[contamPct['cluster_id']==clust, 'ContamPct']
         cluster.loc[cluster['cluster_id']==clust, 'amp']=np.mean(amps[spiketemplates==clust])
         ch = np.argmax(np.max(np.abs(templates[clust, :, :]), axis=0))
-        cluster.loc[cluster['cluster_id']==clust, 'ch']= ch
+        cluster.loc[cluster['cluster_id']==clust, 'ch']= int(ch)
         cluster.loc[cluster['cluster_id']==clust, 'depth']=channel_positions[ch,1]
         cluster.loc[cluster['cluster_id']==clust, 'fr']=spktime.shape[0]/maxtime
         cluster.loc[cluster['cluster_id']==clust, 'group']=np.nan
@@ -428,7 +428,7 @@ if __name__ == '__main__':
         spikepositions = np.squeeze(np.load(os.path.join(kilosortloc, 'spike_positions.npy'), allow_pickle=True))
     except:
         print('\tMaking cluster_info.tsv and loading Kilosort data')
-        cluster, spiketemplates, spiketimes, templates, spikepositions = make_cluster_info(kilosortloc)
+        cluster, spiketemplates, spiketimes, templates, spikepositions = make_cluster_info(kilosortloc, rate=rate)
 
     if skipttls:
         spike_max = np.max(spiketimes)
@@ -499,11 +499,12 @@ if __name__ == '__main__':
             points = spikepositions[spiketemplates==c_id]
             cluster.loc[cluster['cluster_id']==c_id, 'xs']=np.mean(points[:,0])
             cluster.loc[cluster['cluster_id']==c_id, 'ys']=np.mean(points[:,1])
-            pos = np.squeeze(chanposition[cluster.loc[cluster['cluster_id'] == c_id, 'ch'].values,:])
+            ch = cluster.loc[cluster['cluster_id'] == c_id, 'ch'].values
+            pos = np.squeeze(chanposition[int(ch[0]),:])
             cluster.loc[cluster['cluster_id']==c_id, 'x']=pos[1]
             cluster.loc[cluster['cluster_id']==c_id, 'y']=pos[0]
-        print('\tSaving .tsv to ', os.path.join(kilosort_location, 'cluster_info.tsv'))
-        cluster.to_csv(os.path.join(kilosort_location, 'cluster_info.tsv'), sep='\t')
+        print('\tSaving .tsv to ', os.path.join(kilosortloc, 'cluster_info.tsv'))
+        cluster.to_csv(os.path.join(kilosortloc, 'cluster_info.tsv'), sep='\t')
 
     if save:
         fig, axs = plt.subplots(1,4, figsize = (10,5), sharey=True)
@@ -513,7 +514,7 @@ if __name__ == '__main__':
             axs[j].scatter(chanposition[:,1], chanposition[:,0], facecolors='None', edgecolors='k')
             clust = cluster[cluster[class_col]==group].copy()
             for index in clust.index:        
-                pos = chanposition[clust.loc[index, 'ch']]
+                pos = np.zeros(2)
                 pos[1] = clust.loc[index, 'xs']
                 pos[0] = clust.loc[index, 'ys']
                 color= clust.loc[index, 'group_c']
