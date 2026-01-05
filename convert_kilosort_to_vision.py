@@ -51,8 +51,12 @@ def get_IDs(cluster: pd.DataFrame,
         IDs: cluster ids from sorting to be included in the saved output
 
     '''
-    IDs = cluster.loc[cluster[class_col]==group, 'cluster_id'].values
-    IDs_index = cluster.loc[cluster[class_col]==group, 'cluster_id'].index
+    if group=='all':
+        IDs = cluster['cluster_id'].values
+        IDs_index = cluster['cluster_id'].index
+    else:
+        IDs = cluster.loc[cluster[class_col]==group, 'cluster_id'].values
+        IDs_index = cluster.loc[cluster[class_col]==group, 'cluster_id'].index
 
     return np.array(IDs, dtype=int),  np.array(IDs_index, dtype=int)
 

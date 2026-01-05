@@ -190,6 +190,24 @@ def ttl_npx_data(dataset_dir: str,
     np.save(os.path.join(savedir, 'datasep.npy'), {'Datasep':datasep, 'Datalength':datalength})
 
 
+def welford_stat_update(count, mean, M2, newdata):
+    count += 1
+    delta = new_value - mean
+    mean += delta / count
+    delta2 = new_value - mean
+    M2 += delta * delta2
+    
+    return count, mean, M2
+
+
+def welford_stat_finalize(count, mean, M2):
+    if count < 2:
+        return mean, np.nan
+    else:
+        variance = M2 / count
+        return mean, variance
+
+
 def make_waveform_summary(dataset_dir: str,
                  kilosortloc: str,  
                  savefile: str, 
@@ -225,7 +243,8 @@ def make_waveform_summary(dataset_dir: str,
     total_time = 0
     datalength = []
     datasep = [0]
-    waveforms = np.zeros((len(cluster_ids), nchannels, 61))#double check this matches the template file
+    waveforms = np.zeros((len(cluster_ids), nchannels, 61))
+    waveforms_var = np.zeros_like(waveforms)
     nwaveform = np.zeros(len(cluster_ids))
 
     for datafile in folders_org:
@@ -271,14 +290,18 @@ def make_waveform_summary(dataset_dir: str,
                 ctime = stimes[stemps==w]
                 for t in ctime:
                     if (t>20)&(t<(batchsz-41)):
-                        waveforms[ind,:,:] += data[int(t-20):int(t+41),:]
-                        nwaveform[ind] += 1
-
-    for ind in cluster_index:                    
-        waveforms[ind] =/ nwaveform[ind]
-
+                        if nwaveform[ind] == 0:
+                            waveforms[ind,:,:] += data[int(t-20):int(t+41),:]
+                            nwaveform[ind] += 1 
+                        else:
+                            nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:] = welford_stat_update(nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:], data[int(t-20):int(t+41),:])
+                            
+    for ind in cluster_index:
+        nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:] = welford_stat_finalize(nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:])                    
+        
     print('Saving updated templates data: ', kilosortloc)  
     np.save(os.path.join(kilosortloc, 'templates.npy'), waveforms)
+    np.save(os.path.join(kilosortloc, 'templates_vars.npy'), waveforms_var)
 
 
 def fft_raw_data(dataset_dir:str,
