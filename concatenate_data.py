@@ -22,6 +22,8 @@ import sys
 import shutil
 
 import numpy as np
+import pandas as pd
+
 import scipy.fftpack
 from scipy.signal import butter, lfilter
 
@@ -41,6 +43,14 @@ except Exception as e:
 from preprocessing import ttl_rise
 from convert_kilosort_to_vision import get_IDs
 
+
+def butter_bandpass(lowcut, highcut, fs, order=5):
+    return butter(order, [lowcut, highcut], fs=fs, btype='band')
+
+def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
+    b, a = butter_bandpass(lowcut, highcut, fs, order=order)
+    y = lfilter(b, a, data)
+    return y
 
 def get_file_org(dataset_dir: str, 
                  datasets: list,
@@ -277,9 +287,9 @@ def ttl_npx_data(dataset_dir: str,
 
 def welford_stat_update(count, mean, M2, newdata):
     count += 1
-    delta = new_value - mean
+    delta = newdata - mean
     mean += delta / count
-    delta2 = new_value - mean
+    delta2 = newdata - mean
     M2 += delta * delta2
     
     return count, mean, M2
@@ -371,17 +381,19 @@ def make_waveform_summary(dataset_dir: str,
             
             waves = np.unique(stemps)
             for w in waves:
-                ind = cluster_index[w==cluster_id]    
+                ind = cluster_index[w==cluster_ids]    
                 ctime = stimes[stemps==w]
                 for t in ctime:
                     if (t>20)&(t<(batchsz-41)):
                         if nwaveform[ind] == 0:
-                            waveforms[ind,:,:] += data[int(t-20):int(t+41),:]
+                            waveforms[ind,:,:] += data[int(t-20):int(t+41),:].T
                             nwaveform[ind] += 1 
                         else:
-                            nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:] = welford_stat_update(nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:], data[int(t-20):int(t+41),:])
-                            
-            nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:] = welford_stat_finalize(nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:])                    
+                            nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:] = welford_stat_update(nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:], data[int(t-20):int(t+41),:].T)
+    
+    for w in waves:
+        ind = cluster_index[w==cluster_ids]                       
+        waveforms[ind,:,:], waveforms_var[ind,:,:] = welford_stat_finalize(nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:])                    
         
     print('Saving updated templates data: ', kilosortloc)  
     np.save(os.path.join(kilosortloc, 'templates.npy'), waveforms)
@@ -507,7 +519,7 @@ if __name__ == '__main__':
                 datasets[d] = int(number)
     else:
         datasets = None
-    
+
     if datasets!=None:
         if len(datasets) == 1:
             print('Only one datafile specified.')
@@ -530,26 +542,26 @@ if __name__ == '__main__':
                             savefile = os.path.join(dataset_dir, folders_org)
                             assert os.path.exists(savefile), 'Datafile does not exist: {}'.format(savefile)
                             print('Found datafile: '+ savefile)
-            if intan:
-                concatentate_intan_data(dataset_dir, folders_org, savefile, fps)
-            else:
-                ttl_npx_data(dataset_dir, savefile, folders_org, fps)
+    #         if intan:
+    #             concatentate_intan_data(dataset_dir, folders_org, savefile, fps)
+    #         else:
+    #             ttl_npx_data(dataset_dir, savefile, folders_org, fps)
         else:
             folders_org, savefile = get_file_org(dataset_dir, datasets, intan)
-            if intan:
-               concatentate_intan_data(dataset_dir, folders_org, savefile, fps) 
-            else:
-                if concatenate:
-                    concatentate_npx_data(dataset_dir, folders_org, savefile)
-                ttl_npx_data(dataset_dir, savefile, folders_org, fps)
+    #         if intan:
+    #            concatentate_intan_data(dataset_dir, folders_org, savefile, fps) 
+    #         else:
+    #             if concatenate:
+    #                 concatentate_npx_data(dataset_dir, folders_org, savefile)
+    #             ttl_npx_data(dataset_dir, savefile, folders_org, fps)
     else:
         folders_org, savefile = get_file_org(dataset_dir, datasets, intan)
-        if intan:
-            concatentate_intan_data(dataset_dir, folders_org, savefile, fps) 
-        else:
-            if concatenate:
-                concatentate_npx_data(dataset_dir, folders_org, savefile)
-            ttl_npx_data(dataset_dir, savefile, folders_org, fps)
+    #     if intan:
+    #         concatentate_intan_data(dataset_dir, folders_org, savefile, fps) 
+    #     else:
+    #         if concatenate:
+    #             concatentate_npx_data(dataset_dir, folders_org, savefile)
+    #         ttl_npx_data(dataset_dir, savefile, folders_org, fps)
     
     if fft:
         fft_raw_data(dataset_dir, folders_org, savefile, fps)
@@ -565,6 +577,7 @@ if __name__ == '__main__':
 
         #spikes information
         cluster = pd.read_csv(os.path.join(kilosortloc, clusterdef), sep='\t') #class 
+        cluster_ids, cluster_index = get_IDs(cluster, class_col='KSLabel', matlab_version=matlab_version, group='all')
         #spike cluster in order of event
         spiketemplates = np.load(os.path.join(kilosortloc, 'spike_clusters.npy')) # to make asdf
         #event times
