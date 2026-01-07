@@ -338,7 +338,8 @@ def make_waveform_summary(dataset_dir: str,
     total_time = 0
     datalength = []
     datasep = [0]
-    waveforms = np.zeros((len(cluster_ids), nchannels, 61))
+    
+    waveforms = np.zeros((len(cluster_ids), 61, nchannels-1))
     waveforms_var = np.zeros_like(waveforms)
     nwaveform = np.zeros(len(cluster_ids))
 
@@ -377,7 +378,7 @@ def make_waveform_summary(dataset_dir: str,
             
             for d in np.arange(nchannels): #apply filter across all channels
                 data[:,d] -= data[:,d].mean()
-                data[:,d] = butter_bandpass_filter(data[:,d], lowcut = 1000, highcut = (fps-100)/2, fs=fps)
+                # data[:,d] = butter_bandpass_filter(data[:,d], lowcut = 1000, highcut = (fps-100)/2, fs=fps)
             
             waves = np.unique(stemps)
             for w in waves:
@@ -385,11 +386,7 @@ def make_waveform_summary(dataset_dir: str,
                 ctime = stimes[stemps==w]
                 for t in ctime:
                     if (t>20)&(t<(batchsz-41)):
-                        if nwaveform[ind] == 0:
-                            waveforms[ind,:,:] += data[int(t-20):int(t+41),:].T
-                            nwaveform[ind] += 1 
-                        else:
-                            nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:] = welford_stat_update(nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:], data[int(t-20):int(t+41),:].T)
+                        nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:] = welford_stat_update(nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:], data[int(t-20):int(t+41),:-1])
     
     for w in waves:
         ind = cluster_index[w==cluster_ids]                       
@@ -584,7 +581,13 @@ if __name__ == '__main__':
         spiketimes = np.load(os.path.join(kilosortloc, 'spike_times.npy')) # to make asdf
         #waveforms for original clusters
         templates = np.load(os.path.join(kilosortloc, 'templates.npy')) #waveforms
-        np.save(os.path.join(kilosortloc, 'templates_orig.npy'), templates) #waveforms
+
+        orig_templateloc = os.path.join(kilosortloc, 'templates_orig.npy')
+        if os.path.exists(orig_templateloc):
+            print('Skipping saving orginal templates, as this has already been done.\n\t', orig_templateloc)
+        else:
+            print('Saving orginal templates:\n\t', orig_templateloc)
+            np.save(orig_templateloc, templates) #waveforms
         
         IDs, IDs_index = get_IDs(cluster, class_col, matlab_version=matlab_version, group='good')
 
