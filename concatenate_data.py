@@ -342,8 +342,9 @@ def make_waveform_summary(dataset_dir: str,
     waveforms = np.zeros((len(cluster_ids), 61, nchannels-1))
     waveforms_var = np.zeros_like(waveforms)
     nwaveform = np.zeros(len(cluster_ids))
+    nwaveform_act = np.zeros(len(cluster_ids))
 
-    for datafile in folders_org:
+    for dataf, datafile in enumerate(folders_org):
         fname = os.path.join(dataset_dir, datafile)
         print('Working on: ', fname)
         # calculate the sample size from the filesize
@@ -368,33 +369,38 @@ def make_waveform_summary(dataset_dir: str,
             if (b % 10)==0:
                 print('\t\tWorking on batch :', b)
             if b == 0:
-                stimes = np.array(spiketimes[spiketimes<batch])*fps/1000
+                stimes = np.array(spiketimes[spiketimes<batch])
                 stemps = spiketemplates[spiketimes<batch]
                 data = dat[:batch, :].astype('float16')
             else:
-                stimes = np.array(spiketimes[(spiketimes<batch)&(spiketimes>batches[b-1])] - batches[b-1]*(1000/fps))*fps/1000
+                stimes = np.array(spiketimes[(spiketimes<batch)&(spiketimes>batches[b-1])] - batches[b-1])
                 stemps = spiketemplates[(spiketimes<batch)&(spiketimes>batches[b-1])]
                 data = dat[batches[b-1]:batch, :].astype('float16')
             
             for d in np.arange(nchannels): #apply filter across all channels
                 data[:,d] -= data[:,d].mean()
-                # data[:,d] = butter_bandpass_filter(data[:,d], lowcut = 1000, highcut = (fps-100)/2, fs=fps)
+                data[:,d] = butter_bandpass_filter(data[:,d], lowcut = 1000, highcut = (fps-100)/2, fs=fps)
             
             waves = np.unique(stemps)
+            matrix_size = data.shape[0]
             for w in waves:
                 ind = cluster_index[w==cluster_ids]    
                 ctime = stimes[stemps==w]
+                nwaveform_act[ind]+=ctime.shape[0]
                 for t in ctime:
-                    if (t>20)&(t<(batchsz-41)):
-                        nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:] = welford_stat_update(nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:], data[int(t-20):int(t+41),:-1])
-    
+                    if (t>20)&(t<(matrix_size-41)):
+                        try:
+                            nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:] = welford_stat_update(nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:], data[int(t-20):int(t+41),:-1])
+                        except Exception as e:
+                            print('Missing updated metrics, due to ', data[int(t-20):int(t+41),:-1].shape, )
     for w in waves:
         ind = cluster_index[w==cluster_ids]                       
         waveforms[ind,:,:], waveforms_var[ind,:,:] = welford_stat_finalize(nwaveform[ind], waveforms[ind,:,:], waveforms_var[ind,:,:])                    
         
     print('Saving updated templates data: ', kilosortloc)  
-    np.save(os.path.join(kilosortloc, 'templates.npy'), waveforms)
+    np.save(os.path.join(kilosortloc, 'templates_mean.npy'), waveforms)
     np.save(os.path.join(kilosortloc, 'templates_vars.npy'), waveforms_var)
+    np.save(os.path.join(kilosortloc, 'nwaveform.npy'), nwaveform)
 
 
 def fft_raw_data(dataset_dir:str,
@@ -539,38 +545,41 @@ if __name__ == '__main__':
                             savefile = os.path.join(dataset_dir, folders_org)
                             assert os.path.exists(savefile), 'Datafile does not exist: {}'.format(savefile)
                             print('Found datafile: '+ savefile)
-    #         if intan:
-    #             concatentate_intan_data(dataset_dir, folders_org, savefile, fps)
-    #         else:
-    #             ttl_npx_data(dataset_dir, savefile, folders_org, fps)
-        else:
-            folders_org, savefile = get_file_org(dataset_dir, datasets, intan)
-    #         if intan:
-    #            concatentate_intan_data(dataset_dir, folders_org, savefile, fps) 
-    #         else:
-    #             if concatenate:
-    #                 concatentate_npx_data(dataset_dir, folders_org, savefile)
-    #             ttl_npx_data(dataset_dir, savefile, folders_org, fps)
-    else:
-        folders_org, savefile = get_file_org(dataset_dir, datasets, intan)
-    #     if intan:
-    #         concatentate_intan_data(dataset_dir, folders_org, savefile, fps) 
-    #     else:
-    #         if concatenate:
-    #             concatentate_npx_data(dataset_dir, folders_org, savefile)
-    #         ttl_npx_data(dataset_dir, savefile, folders_org, fps)
+            # if intan:
+            #     concatentate_intan_data(dataset_dir, folders_org, savefile, fps)
+            # else:
+            #     ttl_npx_data(dataset_dir, savefile, folders_org, fps)
+        # else:
+        #     folders_org, savefile = get_file_org(dataset_dir, datasets, intan)
+            # if intan:
+            #    concatentate_intan_data(dataset_dir, folders_org, savefile, fps) 
+            # else:
+            #     if concatenate:
+            #         concatentate_npx_data(dataset_dir, folders_org, savefile)
+            #     ttl_npx_data(dataset_dir, savefile, folders_org, fps)
+    # else:
+    #     folders_org, savefile = get_file_org(dataset_dir, datasets, intan)
+        # if intan:
+        #     concatentate_intan_data(dataset_dir, folders_org, savefile, fps) 
+        # else:
+        #     if concatenate:
+        #         concatentate_npx_data(dataset_dir, folders_org, savefile)
+        #     ttl_npx_data(dataset_dir, savefile, folders_org, fps)
     
     if fft:
         fft_raw_data(dataset_dir, folders_org, savefile, fps)
 
     if waveform:
+        savefile = dataset_dir
+        print(savefile)
+        folders_org = [os.path.join(dataset_dir, 'data_g0_tcat.imec0.ap.bin')]
         try:
-            kilosortloc = os.path.join(os.path.dirname(savefile), 'kilosort4')
+            kilosortloc = os.path.join(savefile, 'kilosort4')
             assert os.path.exists(kilosortloc), 'Could not find: {}'.format(kilosortloc)
         except:
-            kilosortloc = os.path.join(os.path.dirname(savefile), 'kilosort3')
-        assert os.path.exists(kilosortloc), 'Could not find kilosort files.\
-            \nThese files should be located in the same directory as the concatenated data.'
+            kilosortloc = os.path.join(savefile, 'kilosort3')
+        assert os.path.exists(kilosortloc), 'Could not find kilosort files: {}\
+            \nThese files should be located in the same directory as the concatenated data.'.format(kilosortloc)
 
         #spikes information
         cluster = pd.read_csv(os.path.join(kilosortloc, clusterdef), sep='\t') #class 
@@ -580,14 +589,14 @@ if __name__ == '__main__':
         #event times
         spiketimes = np.load(os.path.join(kilosortloc, 'spike_times.npy')) # to make asdf
         #waveforms for original clusters
-        templates = np.load(os.path.join(kilosortloc, 'templates.npy')) #waveforms
+        # templates = np.load(os.path.join(kilosortloc, 'templates.npy')) #waveforms
 
-        orig_templateloc = os.path.join(kilosortloc, 'templates_orig.npy')
-        if os.path.exists(orig_templateloc):
-            print('Skipping saving orginal templates, as this has already been done.\n\t', orig_templateloc)
-        else:
-            print('Saving orginal templates:\n\t', orig_templateloc)
-            np.save(orig_templateloc, templates) #waveforms
+        # orig_templateloc = os.path.join(kilosortloc, 'templates_orig.npy')
+        # if os.path.exists(orig_templateloc):
+        #     print('Skipping saving orginal templates, as this has already been done.\n\t', orig_templateloc)
+        # else:
+        #     print('Saving orginal templates:\n\t', orig_templateloc)
+        #     np.save(orig_templateloc, templates) #waveforms
         
         IDs, IDs_index = get_IDs(cluster, class_col, matlab_version=matlab_version, group='good')
 
