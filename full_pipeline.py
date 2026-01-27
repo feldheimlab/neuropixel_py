@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
 '''
-Python script to take kilosort data and convert it to vision-like outputs
-
-This script is used to convert data run through kilosort to a format that is accepted by
-Feldheim lab pipeline (vision is the spikesorter that has been commonly used in the lab.)
-
-ttlTimes.npy and datasep.npy can be in the kilosort folder or the parent directory
-to the kilosort folder
+Python script to run post-acquitision processing to identify single unit neurons from neuropixel data
 
 Examples:
 
-1. Concatenate all subfolders found in the data directory
-python convert_kilosort_to_vision.py -i D:/Main/Data/File/kilosort4 
+python full_pipeline.py -i D:/Main/Data/File # all datasets in directory will be used to use
+python full_pipeline.py -i D:/Main/Data/File -d 0 2 3 # to specify which datasets to use
 
-Saves matlab files in a sister folder called 'vision' to the kilosort folder
+Saves files in a 'filtered' named folder, sister to where spikeGLX data is stored.
+
+Kilosort files will be saved in the same folder as the filtered concatenated bin file is located.
 
 Authors: Brian R. Mullen
 Date: 2024-09-09
