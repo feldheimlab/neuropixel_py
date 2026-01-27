@@ -12,6 +12,8 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.linear_model import LogisticRegression
 from sklearn.dummy import DummyClassifier
 
+import warnings
+warnings.filterwarnings('ignore')
 
 if __name__ == "__main__":
 
@@ -38,20 +40,20 @@ if __name__ == "__main__":
     cluster = pd.read_csv(attrib_loc, sep='\t', index_col=0)
     group = pd.read_csv(cluster_group, sep='\t', index_col=0)
 
-
-    print(group.head())
-
-    model_loc = '../../kilosort model/'
+    model_loc = '../../Documents/kilosort accessories/waveform_model/'
     feature_loc = os.path.join(model_loc, 'features.npy')
     model_loc = os.path.join(model_loc, 'classification_model.npy')
     
     with open(model_loc, 'rb') as inp:
         model = pickle.load(inp)
     full_features = np.load(feature_loc)
-    print('Classifying waveforms based on the following pipeline:\n')
+    
+    print('\nClassifying waveforms based on the following pipeline:\n')
     print(model)
-    print('These are the features used: ')
-    print(full_features)
+    
+    print('These are the features used for the model: ')
+    for feature in full_features:
+        print('\t', feature)
 
     # Create full feature datasets
     X_full = cluster[full_features].fillna(0)
@@ -63,7 +65,8 @@ if __name__ == "__main__":
     maybe = 0.4
 
     maybes = list(np.where((y_prob[:,0]>maybe)&(y_prob[:,0]<definite))[0])
-    print('Number of waveforms that are undetermined: ', len(maybes))
+    print('\nNumber of waveforms that are undetermined: {0}/{1} {2} %'.format(len(maybes), 
+                len(group), np.round(len(maybes)/len(group)*100,2)))
     # maybes = []
 
     for index, row in group.iterrows():

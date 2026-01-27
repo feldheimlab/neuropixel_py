@@ -54,7 +54,8 @@ def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
 
 def get_file_org(dataset_dir: str, 
                  datasets: list,
-                 intan:bool):
+                 intan:bool, 
+                 CatGT:bool):
 
     print('Concatenating data ', dataset_dir)
     folders = os.listdir(dataset_dir)
@@ -115,10 +116,13 @@ def get_file_org(dataset_dir: str,
             os.mkdir(os.path.join(dataset_dir, savefolder))
         savefile = os.path.join(dataset_dir, savefolder) +'/' + savefolder + '_intan-data.bin'
     else:
-        if not os.path.exists(os.path.join(dataset_dir, savefolder)):
-            print('Making concatenated directory: ', os.path.join(dataset_dir, savefolder))
-            os.mkdir(os.path.join(dataset_dir, savefolder))
-        savefile = os.path.join(dataset_dir, savefolder) +'/' + savefolder + '.imec0.ap.bin'
+        if not CatGT:
+            if not os.path.exists(os.path.join(dataset_dir, savefolder)):
+                print('Making concatenated directory: ', os.path.join(dataset_dir, savefolder))
+                os.mkdir(os.path.join(dataset_dir, savefolder))
+            savefile = os.path.join(dataset_dir, savefolder) +'/' + savefolder + '.imec0.ap.bin'
+        else:
+            savefile = os.path.join(dataset_dir, 'filtered')
 
     return folders_org, savefile
 
@@ -283,6 +287,97 @@ def ttl_npx_data(dataset_dir: str,
     print('Saving TTL and Data Seperation data: ', savedir)
     np.save(os.path.join(savedir, 'ttlTimes.npy'), ttls)
     np.save(os.path.join(savedir, 'datasep.npy'), {'Datasep':datasep, 'Datalength':segmentlength, 'Timestamp':timestamp})
+
+
+def ttl_npx_filtered_data(dataset_dir: str, 
+                 savefile: str, 
+                 folders_org: list, 
+                 fps: int):
+    '''
+    Uses memory maps to load only the digital data (last channel)
+    
+    Arguments:
+        dataset_dir: Main directory that holds the subsets of data
+        savefile: save path of concatentated data, used to get the save directory
+        folders_org: all subfolders in the main dataset to include in concatenation
+    
+    Returns:
+        None
+
+    Saves two files:
+        ttl times: numpy file saving all times TTLs occured, relative the concatenetated data 
+        Datasep: Dictionary containing data separation times and dataset lengths
+    '''
+
+    savedir = os.path.dirname(savefile)
+
+    print('\nCalculating TTLs and data separation.\n')
+    
+    # Hardcoded based on neuropixel data
+    dtype = np.dtype('int16')  # for spikeglx recordings 
+    nchannels = 385 # spikeglx recordings from 1.0 and 2.0
+    dig_channel = 384
+    overlap = 5
+
+    # Variables to save
+    total_time = 0
+    segmentlength = []
+    datasep = [0]
+    ttls = []
+    first = True
+    # for datafile in folders_org:
+    #     fname = os.path.join(dataset_dir, datafile)
+    #     print('Working on: ', fname)
+    #     if first:
+    #         timestamp = time.ctime(os.path.getctime(fname))
+    #         first = False
+    #     # calculate the sample size from the filesize
+    #     nsamples = os.path.getsize(fname)/(nchannels*dtype.itemsize)
+    #     segmentlength.append(1000*nsamples/fps) # in ms
+    #     total_time += segmentlength[-1]
+    #     datasep.append(total_time)
+
+    filtered_loc = os.path.join(dataset_dir, '/filtered/')
+    walkresults = list(os.walk(filtered_loc))
+    subdir = walkresults[0][1][0]
+    subdir_files = walkresults[1][2]
+    for file in subdir_files:
+        if file.endswith('.bin'):
+            binfile = file
+    binloc = os.path.join(saveloc, os.path.join(subdir, binfile))
+    assert os.path.exists(binloc), 'Binary path not found: ' + binloc
+    print('Filtered binary path found:', binloc)
+    #set up memory map
+    dat = np.memmap(binloc,
+            mode='r', # open in read mode (safe)
+            dtype=dtype,
+            shape = (int(nsamples),int(nchannels)))
+
+    #read the data in batches
+    batchsz = 60 * fps #batch size
+    batches = np.arange(batchsz,int(nsamples)+batchsz, batchsz)
+    print('\tTotal time of dataset: {} sec'.format(np.round(segmentlength[-1]/1000)))
+    print('\tTotal number of batches (1 minute each): ', len(batches))
+    
+    for b, batch in enumerate(batches):
+        if (b % 10)==0:
+            print('\t\tWorking on batch :', b)
+        if b == 0:
+            digital = dat[:batch+overlap, dig_channel].astype('float16')
+            digital[digital>0.5]=1
+            ttls.extend(list(ttl_rise(digital, rate=fps)+datasep[-2]))
+        else:
+            digital = dat[batches[b-1]:batch+overlap, dig_channel].astype('float16')
+            digital[digital>0.5]=1
+            ttls.extend(list(ttl_rise(digital, rate=fps)+datasep[-2]+batches[b-1]*(1000/fps)))
+
+    print('\nDatasep:', datasep)
+    print('Datalength:', segmentlength)
+    print('Total TTLs found:', len(ttls))
+
+    print('Saving TTL and Data Seperation data: ', subdir)
+    np.save(os.path.join(subdir, 'ttlTimes.npy'), ttls)
+    np.save(os.path.join(subdir, 'datasep.npy'), {'Datasep':datasep, 'Datalength':segmentlength, 'Timestamp':timestamp})
 
 
 def welford_stat_update(count, mean, M2, newdata):
@@ -479,6 +574,8 @@ if __name__ == '__main__':
         help = 'list of datasets to include, if left blank all datasets in the input directory will be included')
     ap.add_argument('-con', '--concatenate', action='store_true',
         help='Boolean indicating it will concatenate the data anew')
+    ap.add_argument('-filt', '--CatGT', action='store_true',
+        help='Boolean indicating that the data was filtered with CatGT')    
     ap.add_argument('-w', '--waveform', action='store_true',
         help='Boolean indicating it will create the summary of the waveforms. This will take a long time.')
     ap.add_argument('-fft', '--fft', action='store_true',
@@ -502,6 +599,8 @@ if __name__ == '__main__':
     intan = args['intan']
     fft = args['fft']
     fps = args['fps']
+    CatGT = args['CatGT']
+
     if intan:
         fps = 20000
     clusterdef = args['group_tsv']
@@ -545,26 +644,36 @@ if __name__ == '__main__':
                             savefile = os.path.join(dataset_dir, folders_org)
                             assert os.path.exists(savefile), 'Datafile does not exist: {}'.format(savefile)
                             print('Found datafile: '+ savefile)
-            # if intan:
-            #     concatentate_intan_data(dataset_dir, folders_org, savefile, fps)
-            # else:
-            #     ttl_npx_data(dataset_dir, savefile, folders_org, fps)
-        # else:
-        #     folders_org, savefile = get_file_org(dataset_dir, datasets, intan)
-            # if intan:
-            #    concatentate_intan_data(dataset_dir, folders_org, savefile, fps) 
-            # else:
-            #     if concatenate:
-            #         concatentate_npx_data(dataset_dir, folders_org, savefile)
-            #     ttl_npx_data(dataset_dir, savefile, folders_org, fps)
-    # else:
-    #     folders_org, savefile = get_file_org(dataset_dir, datasets, intan)
-        # if intan:
-        #     concatentate_intan_data(dataset_dir, folders_org, savefile, fps) 
-        # else:
-        #     if concatenate:
-        #         concatentate_npx_data(dataset_dir, folders_org, savefile)
-        #     ttl_npx_data(dataset_dir, savefile, folders_org, fps)
+            if intan:
+                concatentate_intan_data(dataset_dir, folders_org, savefile, fps)
+            else:
+                ttl_npx_data(dataset_dir, savefile, folders_org, fps)
+                if CatGT:
+                    ttl_npx_data(dataset_dir, savefile, folders_org, fps)
+                else:
+                    ttl_npx_filtered_data(dataset_dir, savefile, folders_org, fps)
+        else:
+            folders_org, savefile = get_file_org(dataset_dir, datasets, intan, CatGT)
+            if intan:
+               concatentate_intan_data(dataset_dir, folders_org, savefile, fps) 
+            else:
+                if concatenate:
+                    concatentate_npx_data(dataset_dir, folders_org, savefile)
+                if CatGT:
+                    ttl_npx_data(dataset_dir, savefile, folders_org, fps)
+                else:
+                    ttl_npx_filtered_data(dataset_dir, savefile, folders_org, fps)
+    else:
+        folders_org, savefile = get_file_org(dataset_dir, datasets, intan, CatGT)
+        if intan:
+            concatentate_intan_data(dataset_dir, folders_org, savefile, fps) 
+        else:
+            if concatenate:
+                concatentate_npx_data(dataset_dir, folders_org, savefile)
+            if CatGT:
+                ttl_npx_data(dataset_dir, savefile, folders_org, fps)
+            else:
+                ttl_npx_filtered_data(dataset_dir, savefile, folders_org, fps)
     
     if fft:
         fft_raw_data(dataset_dir, folders_org, savefile, fps)

@@ -23,9 +23,11 @@ Date: 2024-09-09
 import subprocess
 import sys
 import os
+import shutil
 
 import kilosort
 
+from concatenate_data import get_file_org
 
 # List of scripts to run in order
 if __name__ == '__main__':
@@ -49,6 +51,9 @@ if __name__ == '__main__':
 	ap.add_argument('-f', '--fps', type = int,
 		default=30000,  
 		help = 'frames per second for data collection')
+	ap.add_argument('-d', '--datasets', type = list, 
+		nargs = '+', required = False, default = None,
+		help = 'list of datasets to include, if left blank all datasets in the input directory will be included')
 	args = vars(ap.parse_args())
 
 	dataloc = args['input_directory']
@@ -56,6 +61,7 @@ if __name__ == '__main__':
 	fps = args['fps']
 	catGTwin_loc = '..\\..\\Documents\\CatGT-win\\'
 	kilosort_accessories = '..\\..\\Documents\\kilosort accessories\\'
+	datasets = args['datasets']
 
 	print('Starting pipeline:')
 	print('Assume the location of the following:')
@@ -71,6 +77,19 @@ if __name__ == '__main__':
 		# dirname = os.path.dirname(dataloc)
 		saveloc = os.path.join(dataloc, 'filtered')
 
+	if args['datasets'] != None:
+		datasets = args['datasets']
+		for d, data in enumerate(datasets):
+			if len(data)==1:
+				datasets[d] = int(np.squeeze(data))
+			else:
+				number = ''
+				for da in data:
+					number += da
+				datasets[d] = int(number)
+	else:
+		datasets = None
+
 	if not os.path.exists(saveloc):
 		try:
 			os.makedirs(saveloc)
@@ -81,30 +100,38 @@ if __name__ == '__main__':
 	assert os.path.exists(saveloc), 'Could not find: {}'.format(saveloc)
 	print('Saving filtered data to: ', saveloc)
 	
-	scripts_to_run = [
-		'filter_concatenate',
-		'kilosort',
-		'assignemnt'
-	]
+	intan = False
+	CatGT = True
+	folders_org, _ = get_file_org(dataloc, datasets, intan, CatGT)
+	n_datasets = len(folders_org) - 1
 
+	scripts_to_run = ['filter_concatenate',
+					  'kilosort',
+					  'waveform_classifier',
+					  'TTL_generate']
+ 
 
 	batch_script_to_run = {'filter_concatenate':{'command':[catGTwin_loc + 'runit.bat',
 															'-dir='+dataloc, #location of data
 															'-run=data', #what was input into spikeglx for data outputs
-															'-g=0:1', #n datasets (0:1 = 2 datasets)
+															'-g=0:'+ str(int(n_datasets)), #n datasets (0:1 = 2 datasets)
 															'-t=0,0', #n probes
-												 			'-prb_fld', '-ap', '-prb=0','-apfilter=butter,12,300,30000', #key parameters/filters for our data
-												 			'-gbldmx', '-xa=0,0,1,2.5,3.5,0', '-pass1_force_ni_ob_bin',
-												 			'-dest='+saveloc # filter save location
-												 			], #destination directory for filter data
+															'-prb_fld', '-ap', '-prb=0','-apfilter=butter,12,300,30000', #key parameters/filters for our data
+															'-gbldmx', '-xa=0,0,1,2.5,3.5,0', '-pass1_force_ni_ob_bin',
+															'-dest='+saveloc # filter save location
+															], #destination directory for filter data
 												 },
 						   'kilosort':{'probe_loc': '../../.kilosort/probes/NP2_kilosortChanMap.mat',
-						   			   'settings' : {'n_chan_bin': 385,  # Number of channels in the binary file
-    											     'nblocks': 5,       # Enable non-rigid drift correction (use 0 for no correction)
-   													 'fs': fps
-   													 }
-   										},
-							'waveform_classifier': {'modelloc': 'modelloc'} 
+									   'settings' : {'n_chan_bin': 385,  # Number of channels in the binary file
+													 'nblocks': 5,       # Enable non-rigid drift correction (use 0 for no correction)
+													 'fs': fps
+													 }
+										},
+							'waveform_classifier': {'model_loc': os.path.join(kilosort_accessories, 'waveform_model'),
+													'scripts': ['waveform_attributes.py', 'classifier.py']
+													} ,
+							'TTL_generate': {'script': 'concatenate_data.py',
+											'input': '--CatGT'}
 
 							}
 
@@ -118,7 +145,6 @@ if __name__ == '__main__':
 			p = subprocess.Popen(command_dict['command'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
 			output, errors = p.communicate()
 			p.wait()
-
 			walkresults = list(os.walk(saveloc))
 			subdir = walkresults[0][1][0]
 			subdir_files = walkresults[1][2]
@@ -131,26 +157,32 @@ if __name__ == '__main__':
 			if  os.path.exists(logloc):
 				print('\tDeleting log from previous run {}'.format(logloc))
 				os.remove(logloc)
-			os.rename(os.path.join(catGTwin_loc, 'CatGT.log'), logloc)
 			
+			shutil.move(os.path.join(catGTwin_loc, 'CatGT.log'), logloc)
 			assert os.path.exists(binloc), 'Could not find the binary file: {}'.format(binloc) # find the filtered binary file
 			print('\tFiltered data create at {}'.format(binloc))
 
 		if script == 'kilosort':
-			settings_dict = batch_script_to_run[script]
+			script_dict = batch_script_to_run[script]
 			
-			probe = kilosort.io.load_probe(settings_dict['probe_loc'])
-			print('Loading probe from {}'.format(settings_dict['probe_loc']))
+			probe = kilosort.io.load_probe(script_dict['probe_loc'])
+			print('Loading probe from {}'.format(script_dict['probe_loc']))
 
-			kilosort.run_kilosort(settings_dict['settings'], probe=probe, filename=binloc)
+			kilosort.run_kilosort(script_dict['settings'], probe=probe, filename=binloc) 
+			kilosortloc = os.path.join(saveloc, os.path.join(subdir, 'kilosort4'))
+			assert os.path.exists(kilosortloc), 'Could not find the kilosort output files: {}'.format(kilosortloc) # find the filtered binary file
 
 		if script == 'waveform_classifier':
-			print('data here')
-		#     # subprocess.run waits for the script to complete
-		#     result = subprocess.run([sys.executable, script])
-		
-		# Optional: check if the previous script was successful
-		# if errors.returncode != 0:
-		# 	print(f"Error: {script} failed. Stopping sequence.")
-		# 	break
+			script_dict = batch_script_to_run[script]
+			for pyscript in  script_dict['scripts']:
+				result = subprocess.run([sys.executable, pyscript, '-i', kilosortloc])
+				if result.returncode != 0:
+					print(f"Error: {script} failed. Stopping sequence.")
+					break
+		if script == 'TTL_generate':
+			script_dict = batch_script_to_run[script]
+			result = subprocess.run([sys.executable, script_dict['script'], '-i', dataloc, script_dict['input']])
+			if result.returncode != 0:
+				print(f"Error: {script} failed. Stopping sequence.")
+				break
 		print(f"--- Finished {script} ---\n")

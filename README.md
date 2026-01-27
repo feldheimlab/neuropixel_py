@@ -1,34 +1,29 @@
 # neuropixel_py
 
+This is a collection of code for processing data after data acquisition. This will return the required files and identify single unit waveforms for analytic consideration.
 
-To get help from the terminal
+The fullpipeline code is dependant on two external packages:
+
+1. CatGT: filtering software, https://github.com/billkarsh/CatGT
+2. Kilsort4: spike sorting software: https://github.com/MouseLand/Kilosort/tree/main
+
+Data acquisition was performed using SpikeGLX to acquire Neuropixel recordings. The code takes into account the file organization that SpikeGLX outputs.  The input director should be the main folder that was specified during the recordings. The subdirectories will automatically be found.
+
+The post-acquisition processing will implement the following pipeline:
+
+1. Concatenation and filtering of raw data using CatGT, including BP filtering and DeMuxed Global average referencing (CAR)
+2. Spike sorting using kilosort4 on concatenated data
+3. Classify waveform outputs from Kilosort using custom RandomForest classifier
+4. TTL and dataseperation identification, generating the relative times that TTLs were found in the concatenated data and the cutoff times between individual stimulation experiments.
+
+To run the full post aquisition processing:
+
 ```python
 #Concatenate all subfolders found in the data directory
-python concatenate_data.py -h
+python full_pipeline.py -i D:/Main/Data/File # all datasets in directory will be used to use
+python full_pipeline.py -i D:/Main/Data/File -d 0 2 3 # to specify which datasets to use
 ```
 
-To concatentate, get TTL event times, look at the spectral information from the neuropixel data add the appropriate flag to the command line (multiple flags can be used at once):
+The classifier was built based on RandomForest classifier and some of the less certain waveforms will be returned without a label. One should visualize all the data before progressing onto analysis (Phy is a built for this purpose: https://github.com/cortex-lab/phy).  The classifier will automatically use file formats that Phy will automatically detect and these classifications will be shown in Phy without need to do anything. 
 
-```python
-#Concatenate all subfolders found in the data directory
-python concatenate_data.py -i D:/Main/Data/File -c
 
-#Concatenate only the datasets indicated that are found in the data directory
-python concatenate_data.py -i D:/Main/Data/File -d 0 2 3 -c
-
-#Get TTLS from all subfolders found in the data directory
-python concatenate_data.py -i D:/Main/Data/File -t
-
-#Get spectral infromation from all subfolders found in the data directory
-python concatenate_data.py -i D:/Main/Data/File -fft
-
-```
-
-Once kilosort has been run and a subfolder has been created, you can re-make the tempates.  After using phy to manager clusters identity and merging/splitting the templates that are saved may not be the current waveform summaries.  To update the templates used in the machine learning clustering of each neuron, you can run the following code (this does take a long time):  
-
-```python
-
-#Concatenate only the datasets indicated that are found in the data directory
-python concatenate_data.py -i D:/Main/Data/File -w
-
-```
