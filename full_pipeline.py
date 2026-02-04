@@ -124,6 +124,7 @@ if __name__ == '__main__':
 															'-t=0,0', #n probes
 															'-prb_fld', '-ap', '-prb=0','-apfilter=butter,12,300,30000', #key parameters/filters for our data
 															'-gbldmx', '-xa=0,0,1,2.5,3.5,0', '-pass1_force_ni_ob_bin',
+															'-xd=2,0,-1,6,15,12', '-supercat_trim_edges',
 															'-dest='+saveloc # filter save location
 															], #destination directory for filter data
 												 },
@@ -134,10 +135,10 @@ if __name__ == '__main__':
 													 }
 										},
 							'waveform_classifier': {'model_loc': os.path.join(kilosort_accessories, 'waveform_model'),
-													'scripts': ['waveform_attributes.py', 'classifier.py']
+													'scripts': ['./python/waveform_attributes.py', './python/classifier.py']
 													} ,
-							'TTL_generate': {'script': 'concatenate_data.py',
-											'input': '--CatGT'}
+							'TTL_generate': {'script': './python/concatenate_data.py',
+											'input': '-filt'}
 
 							}
 

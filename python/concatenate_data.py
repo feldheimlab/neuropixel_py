@@ -312,7 +312,7 @@ def ttl_npx_filtered_data(dataset_dir: str,
     savedir = os.path.dirname(savefile)
 
     print('\nCalculating TTLs and data separation.\n')
-    
+
     # Hardcoded based on neuropixel data
     dtype = np.dtype('int16')  # for spikeglx recordings 
     nchannels = 385 # spikeglx recordings from 1.0 and 2.0
@@ -333,21 +333,22 @@ def ttl_npx_filtered_data(dataset_dir: str,
     #         first = False
     #     # calculate the sample size from the filesize
     #     nsamples = os.path.getsize(fname)/(nchannels*dtype.itemsize)
-    #     segmentlength.append(1000*nsamples/fps) # in ms
-    #     total_time += segmentlength[-1]
-    #     datasep.append(total_time)
 
-    filtered_loc = os.path.join(dataset_dir, '/filtered/')
-    walkresults = list(os.walk(filtered_loc))
+
+    walkresults = list(os.walk(savefile))
     subdir = walkresults[0][1][0]
     subdir_files = walkresults[1][2]
     for file in subdir_files:
         if file.endswith('.bin'):
             binfile = file
-    binloc = os.path.join(saveloc, os.path.join(subdir, binfile))
+    binloc = os.path.join(savefile, os.path.join(subdir, binfile))
     assert os.path.exists(binloc), 'Binary path not found: ' + binloc
     print('Filtered binary path found:', binloc)
     #set up memory map
+    nsamples = os.path.getsize(binloc)/(nchannels*dtype.itemsize)
+    segmentlength.append(1000*nsamples/fps) # in ms
+    total_time += segmentlength[-1]
+    datasep.append(total_time)
     dat = np.memmap(binloc,
             mode='r', # open in read mode (safe)
             dtype=dtype,
@@ -375,9 +376,10 @@ def ttl_npx_filtered_data(dataset_dir: str,
     print('Datalength:', segmentlength)
     print('Total TTLs found:', len(ttls))
 
+    subdir = os.path.dirname(binloc)
     print('Saving TTL and Data Seperation data: ', subdir)
     np.save(os.path.join(subdir, 'ttlTimes.npy'), ttls)
-    np.save(os.path.join(subdir, 'datasep.npy'), {'Datasep':datasep, 'Datalength':segmentlength, 'Timestamp':timestamp})
+    np.save(os.path.join(subdir, 'datasep.npy'), {'Datasep':datasep, 'Datalength':segmentlength})#, 'Timestamp':timestamp})
 
 
 def welford_stat_update(count, mean, M2, newdata):
@@ -594,12 +596,14 @@ if __name__ == '__main__':
     args = vars(ap.parse_args())
 
     dataset_dir = args['input_directory']
+    print(dataset_dir)
     waveform = args['waveform']
     concatenate = args['concatenate']
     intan = args['intan']
     fft = args['fft']
     fps = args['fps']
     CatGT = args['CatGT']
+    print(CatGT)
 
     if intan:
         fps = 20000
@@ -649,9 +653,9 @@ if __name__ == '__main__':
             else:
                 ttl_npx_data(dataset_dir, savefile, folders_org, fps)
                 if CatGT:
-                    ttl_npx_data(dataset_dir, savefile, folders_org, fps)
-                else:
                     ttl_npx_filtered_data(dataset_dir, savefile, folders_org, fps)
+                else:
+                    ttl_npx_data(dataset_dir, savefile, folders_org, fps)
         else:
             folders_org, savefile = get_file_org(dataset_dir, datasets, intan, CatGT)
             if intan:
@@ -660,9 +664,9 @@ if __name__ == '__main__':
                 if concatenate:
                     concatentate_npx_data(dataset_dir, folders_org, savefile)
                 if CatGT:
-                    ttl_npx_data(dataset_dir, savefile, folders_org, fps)
-                else:
                     ttl_npx_filtered_data(dataset_dir, savefile, folders_org, fps)
+                else:
+                    ttl_npx_data(dataset_dir, savefile, folders_org, fps)
     else:
         folders_org, savefile = get_file_org(dataset_dir, datasets, intan, CatGT)
         if intan:
@@ -671,9 +675,9 @@ if __name__ == '__main__':
             if concatenate:
                 concatentate_npx_data(dataset_dir, folders_org, savefile)
             if CatGT:
-                ttl_npx_data(dataset_dir, savefile, folders_org, fps)
-            else:
                 ttl_npx_filtered_data(dataset_dir, savefile, folders_org, fps)
+            else:
+                ttl_npx_data(dataset_dir, savefile, folders_org, fps)
     
     if fft:
         fft_raw_data(dataset_dir, folders_org, savefile, fps)
