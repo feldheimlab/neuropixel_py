@@ -72,7 +72,7 @@ if __name__ == "__main__":
     y_predict = model.predict(X_full)
     y_prob = model.predict_proba(X_full)
 
-    definite = 0.8
+    definite = 0.66
     maybe = 0.4
 
     maybes = list(np.where((y_prob[:,0]>maybe)&(y_prob[:,0]<definite))[0])
