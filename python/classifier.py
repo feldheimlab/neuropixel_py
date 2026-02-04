@@ -90,6 +90,7 @@ if __name__ == "__main__":
                 group.loc[index, 'group'] = 'mua'
             elif y_predict[index]==2:
                 group.loc[index, 'group'] = 'noise'
+        group.loc[index, 'good_pred'] = y_prob[index, 0]
 
     same = np.sum(c_KSLabel['KSLabel']==group['group'])
     n_clusters = len(group)
