@@ -43,7 +43,7 @@ if __name__ == '__main__':
 		help = 'path to output filtered data and kilsort location')
 	ap.add_argument('-p', '--probe', type = str,
 		default='npxl', 
-		help = 'generates the correct probemap, this can be "A", "AN", or "npxl"')
+		help = 'generates the correct probemap, this can be "A", "AN", "npxl", or "linear"')
 	ap.add_argument('-f', '--fps', type = int,
 		default=30000,  
 		help = 'frames per second for data collection')
@@ -55,9 +55,17 @@ if __name__ == '__main__':
 	dataloc = args['input_directory']
 	saveloc = args['output_directory']
 	fps = args['fps']
+	probe = args['probe']
 	catGTwin_loc = '..\\..\\Documents\\CatGT-win\\'
 	kilosort_accessories = '..\\..\\Documents\\kilosort accessories\\'
 	datasets = args['datasets']
+
+	if probe == 'npxl':
+		probe_path = '../../.kilosort/probes/4shank_NP2.0.prb'
+	elif probe == 'linear':
+		probe_path = '../../.kilosort/probes/NP2_kilosortChanMap.mat'
+	elif probe[0] == 'A':
+		probe_path = '../../.kilosort/probes/256ChanMap.mat'
 
 	print('Starting pipeline:')
 	print('Assume the location of the following:')
@@ -117,7 +125,7 @@ if __name__ == '__main__':
 															'-dest='+saveloc # filter save location
 															], #destination directory for filter data
 												 },
-						   'kilosort':{'probe_loc': '../../.kilosort/probes/NP2_kilosortChanMap.mat',
+						   'kilosort':{'probe_loc': probe_path,
 									   'settings' : {'n_chan_bin': 385,  # Number of channels in the binary file
 													 'nblocks': 5,       # Enable non-rigid drift correction (use 0 for no correction)
 													 'fs': fps
@@ -160,7 +168,6 @@ if __name__ == '__main__':
 
 		if script == 'kilosort':
 			script_dict = batch_script_to_run[script]
-			
 			probe = kilosort.io.load_probe(script_dict['probe_loc'])
 			print('Loading probe from {}'.format(script_dict['probe_loc']))
 
