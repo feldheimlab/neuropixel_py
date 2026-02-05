@@ -403,7 +403,12 @@ if __name__ == "__main__":
     #DATA Export
     out_path = os.path.join(DATA_FOLDER, 'cluster_attribute_data.tsv')
     cluster.to_csv(out_path, sep = '\t', index=True)
-    print(f'\tData saved to: {out_path}')
+    print(f'\tAttributes saved to: {out_path}')
+
+    out_path = os.path.join(DATA_FOLDER, 'stored_norm_waveform.npy')
+    np.save(out_path, waveform_norm.stored_waveforms)
+    print(f'\tWaveforms saved to: {out_path}')
+
 
 
 
