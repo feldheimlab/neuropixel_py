@@ -364,11 +364,11 @@ def ttl_npx_filtered_data(dataset_dir: str,
         if (b % 10)==0:
             print('\t\tWorking on batch :', b)
         if b == 0:
-            digital = dat[:batch+overlap, dig_channel].astype('float16')
+            digital = dat[:batch+overlap, dig_channel].astype('float')
             digital[digital>0.5]=1
             ttls.extend(list(ttl_rise(digital, rate=fps)+datasep[-2]))
         else:
-            digital = dat[batches[b-1]:batch+overlap, dig_channel].astype('float16')
+            digital = dat[batches[b-1]:batch+overlap, dig_channel].astype('float')
             digital[digital>0.5]=1
             ttls.extend(list(ttl_rise(digital, rate=fps)+datasep[-2]+batches[b-1]*(1000/fps)))
 
@@ -651,8 +651,9 @@ if __name__ == '__main__':
             if intan:
                 concatentate_intan_data(dataset_dir, folders_org, savefile, fps)
             else:
-                ttl_npx_data(dataset_dir, savefile, folders_org, fps)
+                # ttl_npx_data(dataset_dir, savefile, folders_org, fps)
                 if CatGT:
+                    print('FILTERED!!!!')
                     ttl_npx_filtered_data(dataset_dir, savefile, folders_org, fps)
                 else:
                     ttl_npx_data(dataset_dir, savefile, folders_org, fps)
@@ -664,6 +665,7 @@ if __name__ == '__main__':
                 if concatenate:
                     concatentate_npx_data(dataset_dir, folders_org, savefile)
                 if CatGT:
+                    print('FILTERED!!!!')
                     ttl_npx_filtered_data(dataset_dir, savefile, folders_org, fps)
                 else:
                     ttl_npx_data(dataset_dir, savefile, folders_org, fps)

@@ -21,7 +21,7 @@ import sys
 import os
 import shutil
 
-# import kilosort
+import kilosort
 
 sys.path.append('./python')
 
@@ -100,30 +100,31 @@ if __name__ == '__main__':
 	
 	# Run each script sequentially
 	for script in config.scripts_to_run:
-		command_dict = config.batch_script_to_run[script]
-
 		print(f"--- Running {script} ---")
 		if script == 'filter_concatenate':
+			command_dict = config.batch_script_to_run[script]
 			assert os.path.exists(command_dict['command'][0]), '\tCould not find: {}'.format(command_dict['command'][0])
-			p = subprocess.Popen(config.command_dict['command'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+			p = subprocess.Popen(command_dict['command'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
 			output, errors = p.communicate()
 			p.wait()
-			walkresults = list(os.walk(config.saveloc))
-			subdir = walkresults[0][1][0]
-			subdir_files = walkresults[1][2]
-			for file in subdir_files:
-				if file.endswith('.bin'):
-					binfile = file
-			config.binloc = os.path.join(config.saveloc, os.path.join(subdir, binfile))
-			
-			logloc = os.path.join(config.saveloc, 'CatGT.log') # move log file over to filtered location
-			if  os.path.exists(logloc):
-				print('\tDeleting log from previous run {}'.format(logloc))
-				os.remove(logloc)
-			
-			shutil.move(os.path.join(catGTwin_loc, 'CatGT.log'), logloc)
-			assert os.path.exists(config.binloc), 'Could not find the binary file: {}'.format(config.binloc) # find the filtered binary file
-			print('\tFiltered data create at {}'.format(config.binloc))
+
+		walkresults = list(os.walk(config.saveloc))
+		subdir = walkresults[0][1][0]
+		subdir_files = walkresults[1][2]
+		for file in subdir_files:
+			if file.endswith('.bin'):
+				binfile = file
+		config.binloc = os.path.join(config.saveloc, os.path.join(subdir, binfile))
+		
+		logloc = os.path.join(config.saveloc, 'CatGT.log') # move log file over to filtered location
+		if  os.path.exists(logloc):
+			print('\tDeleting log from previous run {}'.format(logloc))
+			os.remove(logloc)
+		
+		if os.path.exists(os.path.join(config.catGTwin_loc, 'CatGT.log')):
+			shutil.move(os.path.join(config.catGTwin_loc, 'CatGT.log'), logloc)
+		assert os.path.exists(config.binloc), 'Could not find the binary file: {}'.format(config.binloc) # find the filtered binary file
+		print('\tFiltered data create at {}'.format(config.binloc))
 
 		if script == 'kilosort':
 			script_dict = config.batch_script_to_run[script]
@@ -131,14 +132,14 @@ if __name__ == '__main__':
 			print('Loading probe from {}'.format(script_dict['probe_loc']))
 
 			kilosort.run_kilosort(script_dict['settings'], probe=probe, filename=config.binloc) 
-			kilosortloc = os.path.join(saveloc, os.path.join(subdir, 'kilosort4'))
-			assert os.path.exists(kilosortloc), 'Could not find the kilosort output files: {}'.format(kilosortloc) # find the filtered binary file
+		kilosortloc = os.path.join(saveloc, os.path.join(subdir, 'kilosort4'))
+		assert os.path.exists(kilosortloc), 'Could not find the kilosort output files: {}'.format(kilosortloc) # find the filtered binary file
 
 		if script == 'waveform_classifier':
 			script_dict = config.batch_script_to_run[script]
 			for pyscript in  script_dict['scripts']:
 				print(pyscript)
-				result = subprocess.run([sys.executable, pyscript, '-i', config.kilosortloc])
+				result = subprocess.run([sys.executable, pyscript, '-i', kilosortloc])
 				if result.returncode != 0:
 					print(f"Error: {script} failed. Stopping sequence.")
 					break

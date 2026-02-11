@@ -45,10 +45,11 @@ class configs():
 			print('Unknown probe type. The script cannot run kilosort unless we know the probe.')
 
 
-		self.scripts_to_run = ['filter_concatenate',
-							  'kilosort',
-							  'waveform_classifier',
-							  'TTL_generate']
+		self.scripts_to_run = [#'filter_concatenate',
+							  #'kilosort',
+							  #'waveform_classifier',
+							  'TTL_generate'
+							  ]
 		self.batch_script_to_run = {'filter_concatenate':{'command':[self.catGTwin_loc + 'runit.bat',
 															'-dir='+self.dataloc, #location of data
 															'-run=data', #what was input into spikeglx for data outputs
@@ -70,7 +71,7 @@ class configs():
 															'scripts': ['./python/waveform_attributes.py', './python/classifier.py']
 															} ,
 									'TTL_generate': {'script': './python/concatenate_data.py',
-													'input': '-filt'}
+													'input': '--CatGT'}
 
 									}
 	def write_attributes(self):

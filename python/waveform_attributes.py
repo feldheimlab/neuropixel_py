@@ -400,6 +400,8 @@ if __name__ == "__main__":
             cluster['peak_var_{}'.format(i)] = waveform_norm.top_amps_var[:,i]
             cluster['norm_peak_var_{}'.format(i)] = waveform_norm.top_amps_var[:, i]
 
+
+    print(cluster)
     #DATA Export
     out_path = os.path.join(DATA_FOLDER, 'cluster_attribute_data.tsv')
     cluster.to_csv(out_path, sep = '\t', index=True)
