@@ -92,17 +92,21 @@ if __name__ == "__main__":
                 group.loc[index, 'group'] = 'noise'
         group.loc[index, 'good_pred'] = y_prob[index, 0]
 
-    same = np.sum(c_KSLabel['KSLabel']==group['group'])
-    n_clusters = len(group)
-    percent =np.round(same/n_clusters*100,2)
-    print('\n{0} of {1} ({2} %) were the same as KS labeling'.format(same, n_clusters, percent))
+    try:
+        same = np.sum(c_KSLabel['KSLabel']==group['group'])
+        n_clusters = len(group)
+        percent =np.round(same/n_clusters*100,2)
+        print('\n{0} of {1} ({2} %) were the same as KS labeling'.format(same, n_clusters, percent))
+    except Exception as e:
+        print('Unable to do direct comparison of KSLabels and our model, due to the following error:')
+        print('\t', e)
 
     if 'KSLabel' in group.columns:
         group.drop('KSLabel', axis=1, inplace=True)
     if 'Unnamed: 0' in group.columns:
         group.drop('Unnamed: 0', axis=1, inplace=True)
 
-    savefile = os.path.join(DATA_FOLDER, 'cluster_group_new.tsv')
+    savefile = os.path.join(DATA_FOLDER, 'cluster_group.tsv')
     group.to_csv(savefile, sep='\t')
 
 

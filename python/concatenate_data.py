@@ -289,6 +289,79 @@ def ttl_npx_data(dataset_dir: str,
     np.save(os.path.join(savedir, 'datasep.npy'), {'Datasep':datasep, 'Datalength':segmentlength, 'Timestamp':timestamp})
 
 
+class datasep_ttltimes_file_update():
+    def __init__(self, wd, datasep_ends=None):
+        
+        self.wd = wd
+        dirlist = os.listdir(self.wd)
+
+        for file in dirlist:
+            if file.endswith('offsets.txt'):
+                self.offsets_text_file = file
+            breakdown = file.split('.')
+            if not os.path.isdir(os.path.join(wd, file)):
+                if breakdown[-2]=='xd_384_6_15':
+                    self.ttl_text_file = file
+        print('Found offset file: ', self.offsets_text_file)
+        print('Found ttl times file: ', self.ttl_text_file)
+        
+        print('Updating Datasep and ttlTimes files. ')
+        self.Datasep = self.update_sep_file_filtered(os.path.join(self.wd, self.offsets_text_file), datasep_ends)
+        self.ttlTimes = self.get_ttls_filtered(os.path.join(self.wd, self.ttl_text_file))
+        
+
+        print("\nTTL count and Datasep results")
+        for d, data in enumerate(self.Datasep['Datasep']):
+            try:
+                next_data = self.Datasep['Datasep'][d+1]
+                print('\t{0} dataset: {1} - {2} ms'.format(d, np.round(data,2), np.round(next_data,2)))
+                print('\t\t{} TTLs found'.format(len(np.where((self.ttlTimes > data)&(self.ttlTimes<next_data))[0])))
+            except Exception as e:
+                print('')
+        print('Total: {0} - {1} ms, {2} TTLs '.format(np.round(self.Datasep['Datasep'][0],2), 
+                                                      np.round(self.Datasep['Datasep'][-1],2), 
+                                                      self.ttlTimes.shape[0]))
+        
+    def update_sep_file_filtered(self, sepfile, datasep_ends):
+        with open(sepfile,"r") as f:
+            string = f.read()
+        
+        if not isinstance(datasep_ends, list): 
+            datasep_ends = np.load(os.path.join(self.wd, 'datasep.npy'), allow_pickle=True).item()
+            datasep_ends = datasep_ends['Datasep']
+        
+        lines = string.split('\n')
+        out = []
+        for line in lines:
+            out.append(line.split('\t'))
+
+        datasep = np.zeros((len(out[0])))
+        datalength = np.zeros((len(out[0])-1))
+        for o in out:
+            if o[0][:3]=='sec':
+                for n, ou in enumerate(o[1:]):
+                    datasep[n]=float(ou)*1000
+
+        datasep[-1] = datasep_ends[-1]
+        datalength = np.diff(datasep)
+        
+        return {'Datasep':datasep, 'Datalength':datalength}
+
+
+    def get_ttls_filtered(self, ttl_txtfile):
+        with open(ttl_txtfile,"r") as f:
+            string = f.read()
+        lines = string.split('\n')
+        ttls = []
+        for line in lines:
+            try:
+                ttls.append(float(line)*1000)
+            except:
+                print('skipping line')
+                  
+        return np.array(ttls)
+
+
 def ttl_npx_filtered_data(dataset_dir: str, 
                  savefile: str, 
                  folders_org: list, 
@@ -310,8 +383,9 @@ def ttl_npx_filtered_data(dataset_dir: str,
     '''
 
     savedir = os.path.dirname(savefile)
-
-    print('\nCalculating TTLs and data separation.\n')
+    
+    
+    print('\nGetting TTLs and data separation from filtering step.\n')
 
     # Hardcoded based on neuropixel data
     dtype = np.dtype('int16')  # for spikeglx recordings 
@@ -322,14 +396,15 @@ def ttl_npx_filtered_data(dataset_dir: str,
     # Variables to save
     total_time = 0
     segmentlength = []
-    datasep = [0]
+    dataset_ends = [0]
     ttls = []
     first = True
+    
     # for datafile in folders_org:
     #     fname = os.path.join(dataset_dir, datafile)
     #     print('Working on: ', fname)
     #     if first:
-    #         timestamp = time.ctime(os.path.getctime(fname))
+    #         
     #         first = False
     #     # calculate the sample size from the filesize
     #     nsamples = os.path.getsize(fname)/(nchannels*dtype.itemsize)
@@ -348,38 +423,25 @@ def ttl_npx_filtered_data(dataset_dir: str,
     nsamples = os.path.getsize(binloc)/(nchannels*dtype.itemsize)
     segmentlength.append(1000*nsamples/fps) # in ms
     total_time += segmentlength[-1]
-    datasep.append(total_time)
-    dat = np.memmap(binloc,
-            mode='r', # open in read mode (safe)
-            dtype=dtype,
-            shape = (int(nsamples),int(nchannels)))
-
-    #read the data in batches
-    batchsz = 60 * fps #batch size
-    batches = np.arange(batchsz,int(nsamples)+batchsz, batchsz)
-    print('\tTotal time of dataset: {} sec'.format(np.round(segmentlength[-1]/1000)))
-    print('\tTotal number of batches (1 minute each): ', len(batches))
+    dataset_ends.append(total_time)
+    timestamp = time.ctime(os.path.getctime(binloc))
     
-    for b, batch in enumerate(batches):
-        if (b % 10)==0:
-            print('\t\tWorking on batch :', b)
-        if b == 0:
-            digital = dat[:batch+overlap, dig_channel].astype('float')
-            digital[digital>0.5]=1
-            ttls.extend(list(ttl_rise(digital, rate=fps)+datasep[-2]))
-        else:
-            digital = dat[batches[b-1]:batch+overlap, dig_channel].astype('float')
-            digital[digital>0.5]=1
-            ttls.extend(list(ttl_rise(digital, rate=fps)+datasep[-2]+batches[b-1]*(1000/fps)))
-
-    print('\nDatasep:', datasep)
-    print('Datalength:', segmentlength)
-    print('Total TTLs found:', len(ttls))
-
     subdir = os.path.dirname(binloc)
-    print('Saving TTL and Data Seperation data: ', subdir)
-    np.save(os.path.join(subdir, 'ttlTimes.npy'), ttls)
-    np.save(os.path.join(subdir, 'datasep.npy'), {'Datasep':datasep, 'Datalength':segmentlength})#, 'Timestamp':timestamp})
+    # dat = np.memmap(binloc,
+    #         mode='r', # open in read mode (safe)
+    #         dtype=dtype,
+    #         shape = (int(nsamples),int(nchannels)))
+
+    print('\nDataset ends:', dataset_ends)
+    
+    update = datasep_ttltimes_file_update(subdir, dataset_ends)
+    update.Datasep['Timestamp']=timestamp
+    
+    print('Saving file at : ', os.path.join(subdir, 'datasep.npy'))
+    np.save(os.path.join(subdir, 'datasep.npy'), update.Datasep)
+
+    print('Saving file at : ', os.path.join(subdir, 'ttlTimes.npy'))  
+    np.save(os.path.join(subdir, 'ttlTimes.npy'), update.ttlTimes)
 
 
 def welford_stat_update(count, mean, M2, newdata):
@@ -703,16 +765,7 @@ if __name__ == '__main__':
         spiketemplates = np.load(os.path.join(kilosortloc, 'spike_clusters.npy')) # to make asdf
         #event times
         spiketimes = np.load(os.path.join(kilosortloc, 'spike_times.npy')) # to make asdf
-        #waveforms for original clusters
-        # templates = np.load(os.path.join(kilosortloc, 'templates.npy')) #waveforms
 
-        # orig_templateloc = os.path.join(kilosortloc, 'templates_orig.npy')
-        # if os.path.exists(orig_templateloc):
-        #     print('Skipping saving orginal templates, as this has already been done.\n\t', orig_templateloc)
-        # else:
-        #     print('Saving orginal templates:\n\t', orig_templateloc)
-        #     np.save(orig_templateloc, templates) #waveforms
-        
         IDs, IDs_index = get_IDs(cluster, class_col, matlab_version=matlab_version, group='good')
 
         make_waveform_summary(dataset_dir, kilosortloc, savefile, folders_org, spiketemplates, spiketimes,
