@@ -23,9 +23,7 @@ import shutil
 
 import kilosort
 
-sys.path.append('./python')
-
-from concatenate_data import get_file_org
+from python.concatenate_data import get_file_org
 from config import configs
 
 # List of scripts to run in order

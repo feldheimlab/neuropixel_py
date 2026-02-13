@@ -45,17 +45,56 @@ from convert_kilosort_to_vision import get_IDs
 
 
 def butter_bandpass(lowcut, highcut, fs, order=5):
+    """Design a Butterworth bandpass filter.
+
+    Args:
+        lowcut: Low cutoff frequency in Hz.
+        highcut: High cutoff frequency in Hz.
+        fs: Sampling rate in Hz.
+        order: Filter order (default 5).
+
+    Returns:
+        Tuple of (b, a) filter coefficients.
+    """
     return butter(order, [lowcut, highcut], fs=fs, btype='band')
 
 def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
+    """Apply a Butterworth bandpass filter to a 1-D signal.
+
+    Args:
+        data: Input signal array.
+        lowcut: Low cutoff frequency in Hz.
+        highcut: High cutoff frequency in Hz.
+        fs: Sampling rate in Hz.
+        order: Filter order (default 5).
+
+    Returns:
+        Filtered signal array.
+    """
     b, a = butter_bandpass(lowcut, highcut, fs, order=order)
     y = lfilter(b, a, data)
     return y
 
-def get_file_org(dataset_dir: str, 
+def get_file_org(dataset_dir: str,
                  datasets: list,
-                 intan:bool, 
+                 intan:bool,
                  CatGT:bool):
+    """Organize recording subfolders and determine the output save path.
+
+    Scans dataset_dir for recording subfolders, filters by the requested
+    dataset indices, and constructs the appropriate concatenated output
+    file path for either Neuropixel or Intan data formats.
+
+    Args:
+        dataset_dir: Root directory containing recording subfolders.
+        datasets: List of dataset indices to include, or None for all.
+        intan: If True, assume Intan .rhd file organization.
+        CatGT: If True, save to a 'filtered' subdirectory (CatGT output).
+
+    Returns:
+        Tuple of (folders_org, savefile) where folders_org is a list of
+        relative paths to data files and savefile is the output path.
+    """
 
     print('Concatenating data ', dataset_dir)
     folders = os.listdir(dataset_dir)
@@ -290,8 +329,22 @@ def ttl_npx_data(dataset_dir: str,
 
 
 class datasep_ttltimes_file_update():
+    """Parse CatGT output files to reconstruct TTL times and data segment boundaries.
+
+    Reads the offset and TTL text files produced by CatGT filtering to create
+    datasep (segment boundary) and ttlTimes arrays compatible with downstream
+    analysis.
+    """
+
     def __init__(self, wd, datasep_ends=None):
-        
+        """Initialize by locating and parsing CatGT offset and TTL text files.
+
+        Args:
+            wd: Working directory containing CatGT output files.
+            datasep_ends: Optional list of dataset end times in ms. If None,
+                loads from an existing datasep.npy file in wd.
+        """
+
         self.wd = wd
         dirlist = os.listdir(self.wd)
 
@@ -323,6 +376,15 @@ class datasep_ttltimes_file_update():
                                                       self.ttlTimes.shape[0]))
         
     def update_sep_file_filtered(self, sepfile, datasep_ends):
+        """Parse CatGT offset file to compute data segment boundaries.
+
+        Args:
+            sepfile: Path to the CatGT offsets text file.
+            datasep_ends: List of dataset end times, or non-list to load from file.
+
+        Returns:
+            Dict with 'Datasep' (boundary times in ms) and 'Datalength' (segment durations).
+        """
         with open(sepfile,"r") as f:
             string = f.read()
         
@@ -349,6 +411,14 @@ class datasep_ttltimes_file_update():
 
 
     def get_ttls_filtered(self, ttl_txtfile):
+        """Parse CatGT TTL text file to extract TTL onset times.
+
+        Args:
+            ttl_txtfile: Path to CatGT-generated TTL times text file.
+
+        Returns:
+            Numpy array of TTL times in milliseconds.
+        """
         with open(ttl_txtfile,"r") as f:
             string = f.read()
         lines = string.split('\n')
@@ -445,6 +515,17 @@ def ttl_npx_filtered_data(dataset_dir: str,
 
 
 def welford_stat_update(count, mean, M2, newdata):
+    """Perform one step of Welford's online algorithm for computing mean and variance.
+
+    Args:
+        count: Current sample count.
+        mean: Current running mean.
+        M2: Current sum of squared differences from the mean.
+        newdata: New data point to incorporate.
+
+    Returns:
+        Tuple of (count, mean, M2) updated with the new data point.
+    """
     count += 1
     delta = newdata - mean
     mean += delta / count
@@ -455,6 +536,16 @@ def welford_stat_update(count, mean, M2, newdata):
 
 
 def welford_stat_finalize(count, mean, M2):
+    """Finalize Welford's algorithm to compute the mean and variance.
+
+    Args:
+        count: Total sample count.
+        mean: Running mean from welford_stat_update.
+        M2: Sum of squared differences from welford_stat_update.
+
+    Returns:
+        Tuple of (mean, variance). Returns (mean, NaN) if count < 2.
+    """
     if count < 2:
         return mean, np.nan
     else:
@@ -463,28 +554,36 @@ def welford_stat_finalize(count, mean, M2):
 
 
 def make_waveform_summary(dataset_dir: str,
-                 kilosortloc: str,  
-                 savefile: str, 
+                 kilosortloc: str,
+                 savefile: str,
                  folders_org: list,
                  spiketemplates: list,
                  spiketimes: list,
                  cluster_ids: list,
-                 cluster_index: list, 
+                 cluster_index: list,
                  fps: int = 30000):
     '''
-    Uses memory maps to load only the digital data (last channel)
-    
-    Arguments:
-        dataset_dir: Main directory that holds the subsets of data
-        savefile: save path of concatentated data, used to get the save directory
-        folders_org: all subfolders in the main dataset to include in concatenation
-    
-    Returns:
-        None
+    Compute mean waveform templates from raw binary data using Welford's algorithm.
 
-    Saves two files:
-        ttl times: numpy file saving all times TTLs occured, relative the concatenetated data 
-        Datasep: Dictionary containing data separation times and dataset lengths
+    Memory-maps raw .bin files and extracts spike-triggered waveform snippets for each
+    cluster. Applies bandpass filtering per channel and accumulates running mean and
+    variance using Welford's online algorithm.
+
+    Args:
+        dataset_dir: Root directory containing recording subfolders.
+        kilosortloc: Path to kilosort output directory (for saving results).
+        savefile: Path used to determine the save directory.
+        folders_org: List of relative paths to raw .bin data files.
+        spiketemplates: Array of cluster assignments per spike event.
+        spiketimes: Array of spike times in samples.
+        cluster_ids: Array of unique cluster IDs.
+        cluster_index: Array mapping cluster IDs to row indices.
+        fps: Sampling rate in Hz (default 30000).
+
+    Saves:
+        templates_mean.npy: Mean waveforms (n_clusters x 61 x 384).
+        templates_vars.npy: Variance of waveforms (same shape).
+        nwaveform.npy: Number of waveforms accumulated per cluster.
     '''
     print('\nCalculating waveforms.\n')
     
@@ -568,6 +667,23 @@ def fft_raw_data(dataset_dir:str,
                  fps: int,
                  time_offset:float=30,
                  time_dur:float=60):
+    """Compute and plot FFT power spectra from raw Neuropixel binary data.
+
+    Memory-maps raw .bin files, extracts a time window, computes the FFT
+    across all channels, and saves a plot showing time-domain traces and
+    frequency-domain power spectra.
+
+    Args:
+        dataset_dir: Root directory containing recording subfolders.
+        folders_org: List of relative paths to raw .bin data files.
+        savefile: Path used to determine the save location for the plot.
+        fps: Sampling rate in Hz.
+        time_offset: Start time in seconds for the analysis window (default 30).
+        time_dur: Duration in seconds of the analysis window (default 60).
+
+    Saves:
+        {experiment_name}_fft.png in the save directory.
+    """
 
     dtype = np.dtype('int16')  # for spikeglx recordings 
     nchannels = 385 # spikeglx recordings from 1.0 and 2.0
