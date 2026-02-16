@@ -41,8 +41,10 @@ except Exception as e:
     print('Cannot work with Intan files.')
 
 from preprocessing import ttl_rise
-from convert_kilosort_to_vision import get_IDs
-
+try:
+    from convert_kilosort_to_vision import get_IDs
+except:
+    from python.convert_kilosort_to_vision import get_IDs
 
 def butter_bandpass(lowcut, highcut, fs, order=5):
     """Design a Butterworth bandpass filter.
