@@ -11,7 +11,23 @@ import os
 
 
 class configs():
+	"""Configuration class for the neuropixel processing pipeline.
+
+	Centralizes all parameters for CatGT filtering, Kilosort spike sorting,
+	waveform classification, and TTL generation steps. Determines probe type
+	and constructs the appropriate command sequences for each pipeline stage.
+	"""
+
 	def __init__(self, dataloc, saveloc, probe, n_datasets, fps):
+		"""Initialize pipeline configuration.
+
+		Args:
+			dataloc: Path to the raw data directory.
+			saveloc: Path to the output/filtered data directory.
+			probe: Probe type identifier ('npxl', 'linear', or 'A'-prefixed for Intan).
+			n_datasets: Number of datasets to process (0-indexed).
+			fps: Sampling rate in Hz (e.g. 30000).
+		"""
 		self.catGTwin_loc = '..\\..\\Documents\\CatGT-win\\'
 		self.kilosort_accessories = '..\\..\\Documents\\kilosort accessories\\'
 
@@ -76,6 +92,11 @@ class configs():
 							  ]
 		
 	def write_attributes(self):
+		"""Write all configuration attributes to a text file for provenance tracking.
+
+		Saves a 'postprocessing_steps.txt' file in the save directory containing
+		all configuration parameters and their values.
+		"""
 		with open(os.path.join(self.saveloc, 'postprocessing_steps.txt'), 'w') as f:
 		    for keys, values in vars(self).items():
 		    	if isinstance(values, dict):

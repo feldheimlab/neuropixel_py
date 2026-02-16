@@ -23,9 +23,7 @@ import shutil
 
 import kilosort
 
-sys.path.append('./python')
-
-from concatenate_data import get_file_org
+from python.concatenate_data import get_file_org
 from config import configs
 
 def ask_yes_or_no(msg: str) -> bool:
