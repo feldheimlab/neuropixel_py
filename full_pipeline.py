@@ -201,7 +201,7 @@ if __name__ == '__main__':
 			script_dict = config.batch_script_to_run[script]
 			print(script_dict['script'])
 
-			result = subprocess.run([sys.executable, script_dict['script'], '-i', config.dataloc, script_dict['input']])
+			result = subprocess.run([sys.executable, script_dict['script'], '-i', config.dataloc, '-o', saveloc,  script_dict['input']])
 			if result.returncode != 0:
 				print(f"Error: {script} failed. Stopping sequence.")
 				break

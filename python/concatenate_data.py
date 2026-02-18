@@ -481,7 +481,7 @@ def ttl_npx_filtered_data(dataset_dir: str,
     #     # calculate the sample size from the filesize
     #     nsamples = os.path.getsize(fname)/(nchannels*dtype.itemsize)
 
-
+    print(savefile)
     walkresults = list(os.walk(savefile))
     subdir = walkresults[0][1][0]
     subdir_files = walkresults[1][2]
@@ -751,6 +751,9 @@ if __name__ == '__main__':
     ap.add_argument('-i', '--input_directory', type = str,
         required = True, 
         help = 'path to the .bin files for concatenation')
+    ap.add_argument('-o', '--output_directory', type = str,
+        required = False, default=None,
+        help = 'path to output filtered data and kilsort location')
     ap.add_argument('-d', '--datasets', type = list, 
         nargs = '+', required = False, default = None,
         help = 'list of datasets to include, if left blank all datasets in the input directory will be included')
@@ -776,6 +779,7 @@ if __name__ == '__main__':
     args = vars(ap.parse_args())
 
     dataset_dir = args['input_directory']
+    saveloc = args['output_directory']
     print(dataset_dir)
     waveform = args['waveform']
     concatenate = args['concatenate']
@@ -792,6 +796,10 @@ if __name__ == '__main__':
     matlab_version = '5'
 
     assert os.path.exists(dataset_dir), 'Data directory does not exist: {}'.format(dataset_dir)
+    
+    if saveloc == None:
+        # dirname = os.path.dirname(dataloc)
+        saveloc = os.path.join(dataset_dir, 'filtered')
     
     if args['datasets'] != None:
         datasets = args['datasets']
@@ -834,7 +842,7 @@ if __name__ == '__main__':
                 # ttl_npx_data(dataset_dir, savefile, folders_org, fps)
                 if CatGT:
                     print('FILTERED!!!!')
-                    ttl_npx_filtered_data(dataset_dir, savefile, folders_org, fps)
+                    ttl_npx_filtered_data(dataset_dir, saveloc, folders_org, fps)
                 else:
                     ttl_npx_data(dataset_dir, savefile, folders_org, fps)
         else:
@@ -846,7 +854,7 @@ if __name__ == '__main__':
                     concatentate_npx_data(dataset_dir, folders_org, savefile)
                 if CatGT:
                     print('FILTERED!!!!')
-                    ttl_npx_filtered_data(dataset_dir, savefile, folders_org, fps)
+                    ttl_npx_filtered_data(dataset_dir, saveloc, folders_org, fps)
                 else:
                     ttl_npx_data(dataset_dir, savefile, folders_org, fps)
     else:
@@ -857,7 +865,7 @@ if __name__ == '__main__':
             if concatenate:
                 concatentate_npx_data(dataset_dir, folders_org, savefile)
             if CatGT:
-                ttl_npx_filtered_data(dataset_dir, savefile, folders_org, fps)
+                ttl_npx_filtered_data(dataset_dir, saveloc, folders_org, fps)
             else:
                 ttl_npx_data(dataset_dir, savefile, folders_org, fps)
     
