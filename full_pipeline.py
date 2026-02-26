@@ -113,8 +113,8 @@ if __name__ == '__main__':
 		config.binloc = os.path.join(config.saveloc, os.path.join(subdir, binfile))
 		kilosortloc = os.path.join(saveloc, os.path.join(subdir, 'kilosort4'))
 	except:
-		config.binloc = None
-		kilosortloc = None
+		config.binloc = ''
+		kilosortloc = ''
 
 	if os.path.exists(config.binloc):
 		print('Found concatenated bin file:', config.binloc)
@@ -127,6 +127,18 @@ if __name__ == '__main__':
 		print('Found kilsort file:', kilosortloc)
 		if not ask_yes_or_no('Would you like to redo spikesorting with kilsort? [Y/N]: '):
 			config.scripts_to_run.remove('kilosort')
+
+		if ask_yes_or_no('Would you like to re-classify the clusters? [Y/N]: '):
+			files = os.listdir(kilosortloc)
+			print('Deleting previous results:')
+			for file in files:
+			    if file.endswith(".tsv"):
+			    	if file not in ['cluster_ContamPct.tsv','cluster_group.tsv', 'cluster_KSLabel.tsv', 'cluster_Amplitude.tsv']:
+				        file_path = os.path.join(kilosortloc, file)
+				        os.remove(file_path) #
+				        print(f"\tRemoved: {file_path}")
+		else:
+			config.scripts_to_run.remove('waveform_classifier')
 	else:
 		print('No kilosort folder has been found.')	
 
